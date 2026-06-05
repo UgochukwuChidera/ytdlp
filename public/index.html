@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YT-DLP Web Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Custom loader */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;  
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
+    <!-- Header/Hero -->
+    <header class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-lg py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl mb-4">
+                <i class="fa-solid fa-cloud-arrow-down mr-3"></i>YT-DLP Web
+            </h1>
+            <p class="text-xl text-blue-100 mb-8">Download videos, playlists, and channels easily.</p>
+            
+            <div class="bg-white rounded-lg p-4 shadow-md flex flex-col md:flex-row gap-4">
+                <input type="text" id="urlInput" placeholder="Enter video, playlist, or channel URL" class="flex-1 min-w-0 block w-full px-4 py-3 rounded-md border-gray-300 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base shadow-sm border" />
+                <button id="btnMetadata" class="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    Fetch Metadata
+                </button>
+                <button id="btnScrape" class="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    Scrape Playlist
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+        <!-- Settings Panel -->
+        <section class="bg-white shadow rounded-lg p-6 mb-8">
+            <h2 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2">Download Settings</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Quality</label>
+                    <select id="qualitySelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border shadow-sm transition-opacity">
+                        <option value="best">Best Available</option>
+                        <option value="1080p">1080p</option>
+                        <option value="720p">720p</option>
+                        <option value="480p">480p</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Format</label>
+                    <select id="formatSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border shadow-sm transition-opacity">
+                        <option value="mp4">MP4</option>
+                        <option value="webm">WebM</option>
+                    </select>
+                </div>
+                <div class="flex items-center mt-6 pt-2">
+                    <input id="audioOnlyToggle" type="checkbox" class="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer">
+                    <label for="audioOnlyToggle" class="ml-3 block text-sm font-medium text-gray-700 cursor-pointer">
+                        Audio Only (MP3)
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <!-- Status/Error Message -->
+        <div id="statusMessage" class="hidden rounded-md p-4 mb-8 transition-all">
+            <div class="flex">
+                <div class="flex-shrink-0 mt-0.5" id="statusIcon">
+                    <!-- Icon goes here -->
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm font-medium" id="statusText"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden flex-col items-center justify-center py-12">
+            <div class="loader mb-4"></div>
+            <p class="text-gray-500 text-lg" id="loadingText">Processing...</p>
+        </div>
+
+        <!-- Results Container -->
+        <div id="resultsContainer" class="hidden">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6" id="resultsTitle">Results</h2>
+            <div id="resultsGrid" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <!-- Video Cards will be inserted here -->
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-800 text-white text-center py-4 text-sm mt-auto">
+        <p>&copy; 2026 YT-DLP Web Interface. Built with Tailwind CSS.</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
