@@ -1,38 +1,81 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Tab System ---
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
+    // ======================== UTILITY FUNCTIONS ========================
 
-    const activateTab = (tabId) => {
-        tabBtns.forEach(btn => {
-            btn.classList.remove('tab-active');
-            btn.classList.add('text-gray-500', 'border-transparent');
-        });
-        tabContents.forEach(el => el.classList.add('hidden'));
-        const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-        if (activeBtn) {
-            activeBtn.classList.add('tab-active');
-            activeBtn.classList.remove('text-gray-500', 'border-transparent');
-        }
-        const activeContent = document.getElementById(`tab-${tabId}`);
-        if (activeContent) activeContent.classList.remove('hidden');
-
-        if (tabId === 'downloads') loadFiles();
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     };
 
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => activateTab(btn.dataset.tab));
-    });
+    const formatDuration = (seconds) => {
+        if (!seconds || isNaN(seconds)) return 'Unknown';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
 
-    activateTab('download');
+    const formatFileSize = (bytes) => {
+        if (!bytes || bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(1024));
+        const size = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
+        return `${size} ${units[i]}`;
+    };
 
-    // --- Download Tab Elements ---
-    const urlInput = document.getElementById('urlInput');
-    const btnMetadata = document.getElementById('btnMetadata');
-    const btnScrape = document.getElementById('btnScrape');
-    const qualitySelect = document.getElementById('qualitySelect');
-    const formatSelect = document.getElementById('formatSelect');
-    const audioOnlyToggle = document.getElementById('audioOnlyToggle');
+    const formatDate = (dateStr) => {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr || 'Unknown';
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+
+    // --- Toast System ---
+    let toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toastContainer';
+        toastContainer.className = 'fixed top-4 right-4 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none';
+        document.body.appendChild(toastContainer);
+    }
+
+    const showToast = (message, type = 'info') => {
+        const colors = {
+            success: 'bg-green-50 border-green-200 text-green-800',
+            error: 'bg-red-50 border-red-200 text-red-800',
+            info: 'bg-blue-50 border-blue-200 text-blue-800',
+        };
+        const icons = {
+            success: '<i class="fa-solid fa-circle-check text-green-400 text-lg"></i>',
+            error: '<i class="fa-solid fa-circle-xmark text-red-400 text-lg"></i>',
+            info: '<i class="fa-solid fa-circle-info text-blue-400 text-lg"></i>',
+        };
+        const toast = document.createElement('div');
+        toast.className = `pointer-events-auto rounded-lg border p-4 shadow-lg transition-all duration-300 ${colors[type] || colors.info}`;
+        toast.innerHTML = `<div class="flex items-start gap-3"><div class="flex-shrink-0 mt-0.5">${icons[type] || icons.info}</div><div class="flex-1 text-sm font-medium">${message}</div><button class="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600" onclick="this.parentElement.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button></div>`;
+        toastContainer.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 5000);
+    };
+
+    // --- Modal System ---
+    const showModal = (html, onClose) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4';
+        overlay.innerHTML = `<div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[85vh] overflow-auto p-6 relative">${html}</div>`;
+        const closeModal = () => { overlay.remove(); if (onClose) onClose(); };
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+        const closeBtn = overlay.querySelector('.modal-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+        document.body.appendChild(overlay);
+        return { overlay, close: closeModal };
+    };
+
+    // --- Status / Loading (existing API) ---
     const statusMessage = document.getElementById('statusMessage');
     const statusIcon = document.getElementById('statusIcon');
     const statusText = document.getElementById('statusText');
@@ -41,6 +84,216 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsContainer = document.getElementById('resultsContainer');
     const resultsGrid = document.getElementById('resultsGrid');
     const resultsTitle = document.getElementById('resultsTitle');
+
+    const showLoading = (text) => {
+        if (statusMessage) statusMessage.classList.add('hidden');
+        if (resultsContainer) resultsContainer.classList.add('hidden');
+        if (loadingIndicator) {
+            loadingIndicator.classList.remove('hidden');
+            loadingIndicator.classList.add('flex');
+        }
+        if (loadingText) loadingText.textContent = text || 'Processing...';
+    };
+
+    const hideLoading = () => {
+        if (loadingIndicator) {
+            loadingIndicator.classList.add('hidden');
+            loadingIndicator.classList.remove('flex');
+        }
+    };
+
+    const showError = (message) => {
+        if (statusMessage) {
+            statusMessage.className = 'rounded-md p-4 mb-8 bg-red-50 border border-red-200';
+            if (statusIcon) statusIcon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-400 text-lg"></i>';
+            if (statusText) { statusText.className = 'text-sm font-medium text-red-800'; statusText.textContent = message; }
+            statusMessage.classList.remove('hidden');
+        }
+    };
+
+    const showSuccess = (message) => {
+        if (statusMessage) {
+            statusMessage.className = 'rounded-md p-4 mb-8 bg-green-50 border border-green-200';
+            if (statusIcon) statusIcon.innerHTML = '<i class="fa-solid fa-circle-check text-green-400 text-lg"></i>';
+            if (statusText) { statusText.className = 'text-sm font-medium text-green-800'; statusText.textContent = message; }
+            statusMessage.classList.remove('hidden');
+        }
+    };
+
+    const showInfo = (message) => {
+        if (statusMessage) {
+            statusMessage.className = 'rounded-md p-4 mb-8 bg-blue-50 border border-blue-200';
+            if (statusIcon) statusIcon.innerHTML = '<i class="fa-solid fa-circle-info text-blue-400 text-lg"></i>';
+            if (statusText) { statusText.className = 'text-sm font-medium text-blue-800'; statusText.textContent = message; }
+            statusMessage.classList.remove('hidden');
+        }
+    };
+
+    let currentOptions = {};
+
+    // ======================== TAB SYSTEM ========================
+
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    let currentTab = null;
+    let queueEventSource = null;
+    let queuePollInterval = null;
+
+    const updateTabBadge = (tabId, count) => {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+        if (!btn) return;
+        let badge = btn.querySelector('.tab-badge');
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'tab-badge ml-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-500 rounded-full';
+                btn.appendChild(badge);
+            }
+            badge.textContent = count > 99 ? '99+' : count;
+        } else {
+            if (badge) badge.remove();
+        }
+    };
+
+    const activateTab = (tabId) => {
+        if (!tabId) return;
+
+        // Cleanup previous tab
+        if (currentTab === 'queue') {
+            if (queueEventSource) { queueEventSource.close(); queueEventSource = null; }
+            if (queuePollInterval) { clearInterval(queuePollInterval); queuePollInterval = null; }
+        }
+
+        currentTab = tabId;
+
+        tabBtns.forEach(btn => {
+            btn.classList.remove('tab-active');
+            btn.classList.add('text-gray-500', 'border-transparent');
+        });
+        tabContents.forEach(el => el.classList.add('hidden'));
+
+        const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+        if (activeBtn) {
+            activeBtn.classList.add('tab-active');
+            activeBtn.classList.remove('text-gray-500', 'border-transparent');
+        }
+        const activeContent = document.getElementById(`tab-${tabId}`);
+        if (activeContent) activeContent.classList.remove('hidden');
+
+        // Tab-specific activation logic
+        if (tabId === 'downloads') loadFiles();
+        if (tabId === 'setup') checkSetupStatus();
+        if (tabId === 'channels') loadChannels();
+        if (tabId === 'queue') initQueueSSE();
+        if (tabId === 'options') loadOptions();
+    };
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+    });
+
+    // ======================== DOWNLOAD TAB ========================
+
+    const urlInput = document.getElementById('urlInput');
+    const btnMetadata = document.getElementById('btnMetadata');
+    const btnScrape = document.getElementById('btnScrape');
+    const qualitySelect = document.getElementById('qualitySelect');
+    const formatSelect = document.getElementById('formatSelect');
+    const audioOnlyToggle = document.getElementById('audioOnlyToggle');
+
+    // Wire up existing format list button
+    const btnListFormats = document.getElementById('btnFormatList');
+    if (btnListFormats) {
+        btnListFormats.addEventListener('click', async () => {
+                const url = urlInput.value.trim();
+                if (!url) return showError('Please enter a URL first');
+                try {
+                    showLoading('Fetching available formats...');
+                    const response = await fetch(`/api/format-list?url=${encodeURIComponent(url)}`);
+                    if (!response.ok) {
+                        let errMsg = 'Failed to fetch formats';
+                        try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
+                        throw new Error(errMsg);
+                    }
+                    hideLoading();
+                    const data = await response.json();
+                    const formats = data.formats || data || [];
+                    if (!Array.isArray(formats) || formats.length === 0) {
+                        showToast('No formats available for this video', 'error');
+                        return;
+                    }
+
+                    let tableHtml = `
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900">Available Formats (${formats.length})</h3>
+                            <button class="modal-close text-gray-400 hover:text-gray-600 text-xl"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="format_id">Code</th>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="ext">Ext</th>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="resolution">Resolution</th>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="tbr">Bitrate</th>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="filesize">Size</th>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Note</th>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Codec</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">`;
+                    formats.forEach(f => {
+                        const size = f.filesize || f.filesize_approx;
+                        const fmtId = escapeHtml(f.format_id || f.format_code || '-');
+                        const ext = escapeHtml(f.ext || '-');
+                        const resolution = f.resolution || f.height ? (f.width && f.height ? `${f.width}x${f.height}` : `${f.height || ''}p`) : '-';
+                        const bitrate = f.tbr ? `${Math.round(f.tbr)}k` : f.abr ? `${Math.round(f.abr)}k` : '-';
+                        const sizeStr = size ? formatFileSize(size) : '-';
+                        const note = escapeHtml(f.format_note || f.format || '-');
+                        const vcodec = f.vcodec || '';
+                        const acodec = f.acodec || '';
+                        const codecStr = (vcodec !== 'none' ? 'V:' + escapeHtml(vcodec || '-') : '') + (acodec && acodec !== 'none' ? ' A:' + escapeHtml(acodec) : '');
+                        tableHtml += `<tr class="format-row cursor-pointer hover:bg-blue-50 transition-colors" data-ext="${ext}" data-vcodec="${escapeHtml(vcodec)}" data-format-id="${fmtId}">
+                            <td class="px-3 py-2 font-mono text-xs text-gray-900">${fmtId}</td>
+                            <td class="px-3 py-2 text-gray-700">${ext}</td>
+                            <td class="px-3 py-2 text-gray-700">${escapeHtml(resolution)}</td>
+                            <td class="px-3 py-2 text-gray-700">${escapeHtml(bitrate)}</td>
+                            <td class="px-3 py-2 text-gray-700">${escapeHtml(sizeStr)}</td>
+                            <td class="px-3 py-2 text-gray-700">${note}</td>
+                            <td class="px-3 py-2 font-mono text-xs text-gray-500">${codecStr || '-'}</td>
+                        </tr>`;
+                    });
+                    tableHtml += `</tbody></table></div>`;
+                    const { overlay } = showModal(tableHtml);
+                    overlay.querySelectorAll('.format-row').forEach(row => {
+                        row.addEventListener('click', () => {
+                            const ext = row.dataset.ext;
+                            const vcodec = row.dataset.vcodec;
+                            const fmtId = row.dataset.formatId;
+                            formatSelect.value = ext;
+                            qualitySelect.value = 'custom';
+                            if (vcodec && vcodec !== 'none') {
+                                qualitySelect.innerHTML = '<option value="custom">Custom</option>';
+                            }
+                            const isAudioOnly = vcodec === 'none' || !vcodec;
+                            audioOnlyToggle.checked = isAudioOnly;
+                            if (isAudioOnly) {
+                                audioOnlyToggle.dispatchEvent(new Event('change'));
+                            }
+                            const modalCloseBtn = overlay.querySelector('.modal-close');
+                            if (modalCloseBtn) modalCloseBtn.click();
+                            showToast('Format selected: ' + fmtId, 'success');
+                        });
+                    });
+                } catch (error) {
+                    hideLoading();
+                    showToast(error.message, 'error');
+                }
+        });
+    }
+
+    const audioFormatSelect = document.getElementById('audioFormatSelect');
+    const outputTemplateInput = document.getElementById('outputTemplateInput');
 
     audioOnlyToggle.addEventListener('change', (e) => {
         if (e.target.checked) {
@@ -56,77 +309,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const showLoading = (text) => {
-        statusMessage.classList.add('hidden');
-        resultsContainer.classList.add('hidden');
-        loadingIndicator.classList.remove('hidden');
-        loadingIndicator.classList.add('flex');
-        loadingText.textContent = text || 'Processing...';
-    };
-
-    const hideLoading = () => {
-        loadingIndicator.classList.add('hidden');
-        loadingIndicator.classList.remove('flex');
-    };
-
-    const showError = (message) => {
-        statusMessage.className = 'rounded-md p-4 mb-8 bg-red-50 border border-red-200';
-        statusIcon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-400 text-lg"></i>';
-        statusText.className = 'text-sm font-medium text-red-800';
-        statusText.textContent = message;
-        statusMessage.classList.remove('hidden');
-    };
-
-    const showSuccess = (message) => {
-        statusMessage.className = 'rounded-md p-4 mb-8 bg-green-50 border border-green-200';
-        statusIcon.innerHTML = '<i class="fa-solid fa-circle-check text-green-400 text-lg"></i>';
-        statusText.className = 'text-sm font-medium text-green-800';
-        statusText.textContent = message;
-        statusMessage.classList.remove('hidden');
-    };
-
-    const showInfo = (message) => {
-        statusMessage.className = 'rounded-md p-4 mb-8 bg-blue-50 border border-blue-200';
-        statusIcon.innerHTML = '<i class="fa-solid fa-circle-info text-blue-400 text-lg"></i>';
-        statusText.className = 'text-sm font-medium text-blue-800';
-        statusText.textContent = message;
-        statusMessage.classList.remove('hidden');
-    };
-
-    const formatDuration = (seconds) => {
-        if (!seconds || isNaN(seconds)) return 'Unknown';
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        return `${m}:${s.toString().padStart(2, '0')}`;
-    };
-
-    const createVideoCard = (video) => {
+    // --- createVideoCard ---
+    const createVideoCard = (video, sourceUrl) => {
         const card = document.createElement('div');
         card.className = 'bg-white overflow-hidden shadow rounded-lg flex flex-col transition-transform hover:-translate-y-1 hover:shadow-lg duration-200 border border-gray-100';
 
-        const thumbnail = video.thumbnail || 'https://via.placeholder.com/320x180.png?text=No+Thumbnail';
-        const title = video.title || 'Unknown Title';
-        const channel = video.uploader || video.channel || 'Unknown Channel';
+        const thumbnail = escapeHtml(video.thumbnail || 'https://via.placeholder.com/320x180.png?text=No+Thumbnail');
+        const title = escapeHtml(video.title || 'Unknown Title');
+        const channel = escapeHtml(video.uploader || video.channel || 'Unknown Channel');
         const duration = formatDuration(video.duration);
-        const url = video.webpage_url || video.url || urlInput.value;
+        const url = escapeHtml(video.webpage_url || video.url || sourceUrl || (urlInput ? urlInput.value : ''));
+        const uploadDate = video.upload_date ? formatDate(video.upload_date) : null;
+        const viewCount = video.view_count;
+        const formatNote = escapeHtml(video.format_note || video.format || (video.height ? `${video.height}p` : null));
 
         card.innerHTML = `
             <div class="relative pt-[56.25%] bg-gray-100 group">
                 <img class="absolute inset-0 w-full h-full object-cover" src="${thumbnail}" alt="Thumbnail" onerror="this.src='https://via.placeholder.com/320x180.png?text=Image+Error'">
-                <div class="absolute bottom-2 right-2 bg-black bg-opacity-80 text-white text-xs px-1.5 py-0.5 rounded font-medium tracking-wide">
-                    ${duration}
+                <div class="absolute bottom-2 right-2 bg-black bg-opacity-80 text-white text-xs px-1.5 py-0.5 rounded font-medium tracking-wide flex items-center gap-1">
+                    <i class="fa-solid fa-clock"></i>${duration}
                 </div>
+                ${formatNote ? `<div class="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-1.5 py-0.5 rounded font-medium">${formatNote}</div>` : ''}
                 <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-opacity duration-200"></div>
             </div>
             <div class="p-4 flex-1 flex flex-col">
-                <h3 class="text-sm font-semibold text-gray-900 mb-1 line-clamp-2" title="${title.replace(/"/g, '&quot;')}">${title}</h3>
-                <p class="text-xs text-gray-500 mb-4 flex items-center">
+                <h3 class="text-sm font-semibold text-gray-900 mb-1 line-clamp-2" title="${title}">${title}</h3>
+                <p class="text-xs text-gray-500 mb-1 flex items-center">
                     <i class="fa-solid fa-user-circle mr-1"></i>${channel}
                 </p>
+                <div class="flex items-center gap-3 text-xs text-gray-400 mb-3">
+                    ${viewCount ? `<span><i class="fa-solid fa-eye mr-1"></i>${viewCount >= 1000000 ? (viewCount / 1000000).toFixed(1) + 'M' : viewCount >= 1000 ? (viewCount / 1000).toFixed(1) + 'K' : viewCount}</span>` : ''}
+                    ${uploadDate ? `<span><i class="fa-solid fa-calendar mr-1"></i>${uploadDate}</span>` : ''}
+                </div>
                 <div class="mt-auto">
-                    <button class="download-btn w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors" data-url="${url.replace(/"/g, '&quot;')}">
+                    <button class="download-btn w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors" data-url="${url}">
                         <i class="fa-solid fa-download mr-2"></i>Download
                     </button>
                 </div>
@@ -134,14 +350,15 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         const downloadBtn = card.querySelector('.download-btn');
-        downloadBtn.addEventListener('click', () => handleDownload(url, title, downloadBtn));
+        downloadBtn.addEventListener('click', () => handleQueueDownload(url, title, downloadBtn));
 
         return card;
     };
 
-    const handleDownload = async (url, title, buttonEl) => {
+    // --- handleQueueDownload (uses queue API) ---
+    const handleQueueDownload = async (url, title, buttonEl) => {
         const originalText = buttonEl.innerHTML;
-        buttonEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Starting...';
+        buttonEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Queuing...';
         buttonEl.disabled = true;
         buttonEl.classList.add('opacity-75', 'cursor-not-allowed');
 
@@ -149,12 +366,14 @@ document.addEventListener('DOMContentLoaded', () => {
             url: url,
             format: formatSelect.value,
             quality: qualitySelect.value,
-            audioOnly: audioOnlyToggle.checked
+            audioOnly: audioOnlyToggle.checked,
+            audioFormat: audioOnlyToggle.checked && audioFormatSelect ? audioFormatSelect.value : undefined,
+            outputTemplate: outputTemplateInput ? outputTemplateInput.value || undefined : undefined,
+            options: Object.keys(currentOptions).length > 0 ? currentOptions : undefined,
         };
 
         try {
-            showInfo(`Starting download for: ${title}`);
-            const response = await fetch('/api/download', {
+            const response = await fetch('/api/download/queue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
@@ -162,50 +381,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!response.ok) {
                 let errMsg = `HTTP Error ${response.status}`;
-                try {
-                    const errText = await response.text();
-                    try {
-                        const errData = JSON.parse(errText);
-                        errMsg = errData.error || errMsg;
-                    } catch (e) {
-                        errMsg = errText || errMsg;
-                    }
-                } catch (e) {}
+                try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
                 throw new Error(errMsg);
             }
 
-            let filename = 'download';
-            const disposition = response.headers.get('Content-Disposition');
-            if (disposition && disposition.indexOf('attachment') !== -1) {
-                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-                const matches = filenameRegex.exec(disposition);
-                if (matches != null && matches[1]) {
-                    filename = matches[1].replace(/['"]/g, '');
-                    try { filename = decodeURIComponent(filename); } catch (e) {}
-                }
-            } else {
-                const ext = audioOnlyToggle.checked ? 'mp3' : formatSelect.value;
-                const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '-').substring(0, 50);
-                filename = `${safeTitle}.${ext}`;
-            }
-
-            buttonEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Downloading...';
-
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = downloadUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(downloadUrl);
-            document.body.removeChild(a);
-
-            showSuccess(`Download completed: ${filename}`);
+            const job = await response.json();
+            showToast(`<span>Download queued! <a href="#" class="font-semibold underline" onclick="event.preventDefault(); activateTab('queue')">View Queue</a></span>`, 'success');
+            updateTabBadge('queue', (parseInt(document.querySelector('.tab-btn[data-tab="queue"] .tab-badge')?.textContent || '0')) + 1);
         } catch (error) {
-            console.error('Download error:', error);
-            showError(`Download failed: ${error.message}`);
+            console.error('Queue error:', error);
+            showToast(`Failed to queue: ${escapeHtml(error.message)}`, 'error');
         } finally {
             buttonEl.innerHTML = originalText;
             buttonEl.disabled = false;
@@ -221,17 +406,16 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/api/metadata?url=${encodeURIComponent(url)}`);
             const data = await response.json();
-
             if (!response.ok) throw new Error(data.error || 'Failed to fetch metadata');
 
             hideLoading();
-            statusMessage.classList.add('hidden');
-            resultsGrid.innerHTML = '';
-            resultsTitle.textContent = 'Single Video';
+            if (statusMessage) statusMessage.classList.add('hidden');
+            if (resultsGrid) resultsGrid.innerHTML = '';
+            if (resultsTitle) resultsTitle.textContent = 'Single Video';
 
-            const card = createVideoCard(data);
-            resultsGrid.appendChild(card);
-            resultsContainer.classList.remove('hidden');
+            const card = createVideoCard(data, url);
+            if (resultsGrid) resultsGrid.appendChild(card);
+            if (resultsContainer) resultsContainer.classList.remove('hidden');
         } catch (error) {
             hideLoading();
             showError(error.message);
@@ -246,48 +430,44 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`);
             const data = await response.json();
-
             if (!response.ok) throw new Error(data.error || 'Failed to scrape URL');
 
             hideLoading();
-            statusMessage.classList.add('hidden');
-            resultsGrid.innerHTML = '';
+            if (statusMessage) statusMessage.classList.add('hidden');
+            if (resultsGrid) resultsGrid.innerHTML = '';
 
             let entries = [];
-            if (Array.isArray(data)) {
-                entries = data;
-            } else if (data.entries) {
-                entries = data.entries;
-            } else if (data.items) {
-                entries = data.items;
-            } else if (data.id) {
-                entries = [data];
-            }
+            if (Array.isArray(data)) entries = data;
+            else if (data.entries) entries = data.entries;
+            else if (data.items) entries = data.items;
+            else if (data.id) entries = [data];
 
-            if (entries.length === 0) {
-                resultsTitle.textContent = 'No videos found';
-            } else {
-                resultsTitle.textContent = `Found ${entries.length} Video${entries.length > 1 ? 's' : ''}`;
-                entries.forEach(video => {
-                    if (video) resultsGrid.appendChild(createVideoCard(video));
-                });
+            if (resultsTitle) {
+                if (entries.length === 0) resultsTitle.textContent = 'No videos found';
+                else resultsTitle.textContent = `Found ${entries.length} Video${entries.length > 1 ? 's' : ''}`;
             }
+            entries.forEach(video => {
+                if (video && resultsGrid) resultsGrid.appendChild(createVideoCard(video, url));
+            });
 
-            resultsContainer.classList.remove('hidden');
+            if (resultsContainer) resultsContainer.classList.remove('hidden');
         } catch (error) {
             hideLoading();
             showError(error.message);
         }
     });
 
-    urlInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            btnMetadata.click();
-        }
-    });
+    if (urlInput) {
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (btnMetadata) btnMetadata.click();
+            }
+        });
+    }
 
-    // --- Setup Tab ---
+    // ======================== SETUP TAB ========================
+
     const btnSetupDownload = document.getElementById('btnSetupDownload');
     const setupProgress = document.getElementById('setupProgress');
     const setupComplete = document.getElementById('setupComplete');
@@ -298,102 +478,185 @@ document.addEventListener('DOMContentLoaded', () => {
     const ytdlpPercent = document.getElementById('ytdlpPercent');
     const ffmpegPercent = document.getElementById('ffmpegPercent');
 
+    let isSetupRunning = false;
+
+    // Inject setup status area
+    const setupTab = document.getElementById('tab-setup');
+    let setupStatusDiv = null;
+    if (setupTab) {
+        const setupMain = setupTab.querySelector('main section');
+        if (setupMain) {
+            setupStatusDiv = document.createElement('div');
+            setupStatusDiv.id = 'setupStatus';
+            setupStatusDiv.className = 'mb-6 bg-white shadow rounded-lg p-6';
+            setupStatusDiv.innerHTML = `
+                <h3 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2"><i class="fa-solid fa-info-circle mr-2"></i>Status</h3>
+                <div id="setupStatusContent" class="text-sm text-gray-600"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Checking...</div>
+            `;
+            setupMain.parentNode.insertBefore(setupStatusDiv, setupMain);
+
+            // Check for updates button
+            const checkUpdatesBtn = document.createElement('button');
+            checkUpdatesBtn.id = 'btnCheckUpdates';
+            checkUpdatesBtn.className = 'inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ml-3';
+            checkUpdatesBtn.innerHTML = '<i class="fa-solid fa-rotate mr-2"></i>Check for Updates';
+            btnSetupDownload.parentElement.appendChild(checkUpdatesBtn);
+
+            checkUpdatesBtn.addEventListener('click', async () => {
+                checkUpdatesBtn.disabled = true;
+                checkUpdatesBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Checking...';
+                try {
+                    const response = await fetch('/api/updates');
+                    if (!response.ok) throw new Error('Failed to check updates');
+                    const data = await response.json();
+                    const msgs = [];
+                    if (data.ytDlp && data.ytDlp.updateAvailable) {
+                        msgs.push(`yt-dlp: ${data.ytDlp.installed || 'none'} \u2192 ${data.ytDlp.latest}`);
+                    }
+                    if (data.ffmpeg && data.ffmpeg.updateAvailable) {
+                        msgs.push(`ffmpeg: ${data.ffmpeg.installed || 'none'} \u2192 ${data.ffmpeg.latest}`);
+                    }
+                    if (msgs.length > 0) {
+                        showToast(`Updates available: ${msgs.join(', ')}`, 'info');
+                    } else {
+                        showToast('All binaries are up to date', 'success');
+                    }
+                    checkSetupStatus();
+                } catch (error) {
+                    showToast(error.message, 'error');
+                } finally {
+                    checkUpdatesBtn.disabled = false;
+                    checkUpdatesBtn.innerHTML = '<i class="fa-solid fa-rotate mr-2"></i>Check for Updates';
+                }
+            });
+        }
+    }
+
+    const checkSetupStatus = async () => {
+        const statusContent = document.getElementById('setupStatusContent');
+        if (!statusContent) return;
+        try {
+            const response = await fetch('/api/status');
+            if (!response.ok) throw new Error('Failed to fetch status');
+            const data = await response.json();
+            const bins = data.binaries || [];
+            let html = '<div class="space-y-2">';
+            if (bins.length === 0) {
+                html += '<p class="text-gray-500">No binaries installed. Use the download button below.</p>';
+            } else {
+                bins.forEach(bin => {
+                    const installed = bin.version;
+                    const binName = escapeHtml(bin.name);
+                    const binVersion = escapeHtml(installed || '?');
+                    html += `<div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-file-code text-gray-400"></i>
+                            <span class="font-medium text-gray-900">${binName}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm text-gray-500">${bin.exists ? 'v' + binVersion : 'Not installed'}</span>
+                            ${bin.exists ? '<span class="px-2 py-0.5 text-xs font-medium text-green-800 bg-green-100 rounded-full">Installed</span>' : '<span class="px-2 py-0.5 text-xs font-medium text-yellow-800 bg-yellow-100 rounded-full">Not Installed</span>'}
+                        </div>
+                    </div>`;
+                });
+            }
+            html += '</div>';
+            statusContent.innerHTML = html;
+        } catch (error) {
+            statusContent.innerHTML = `<p class="text-red-500"><i class="fa-solid fa-circle-xmark mr-1"></i>${escapeHtml(error.message)}</p>`;
+        }
+    };
+
     btnSetupDownload.addEventListener('click', () => {
+        if (isSetupRunning) return;
+        isSetupRunning = true;
         btnSetupDownload.disabled = true;
         btnSetupDownload.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Downloading...';
-        setupComplete.classList.add('hidden');
-        setupProgress.classList.remove('hidden');
-        ytdlpBar.style.width = '0%';
-        ffmpegBar.style.width = '0%';
-        ytdlpStatus.textContent = 'Starting...';
-        ffmpegStatus.textContent = 'Starting...';
-        ytdlpPercent.textContent = '0%';
-        ffmpegPercent.textContent = '0%';
+        if (setupComplete) setupComplete.classList.add('hidden');
+        if (setupProgress) setupProgress.classList.remove('hidden');
+        if (ytdlpBar) ytdlpBar.style.width = '0%';
+        if (ffmpegBar) ffmpegBar.style.width = '0%';
+        if (ytdlpStatus) ytdlpStatus.textContent = 'Starting...';
+        if (ffmpegStatus) ffmpegStatus.textContent = 'Starting...';
+        if (ytdlpPercent) ytdlpPercent.textContent = '0%';
+        if (ffmpegPercent) ffmpegPercent.textContent = '0%';
 
         const evtSource = new EventSource('/api/setup');
+
+        const cleanup = () => {
+            isSetupRunning = false;
+            btnSetupDownload.disabled = false;
+            btnSetupDownload.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg';
+        };
 
         evtSource.onmessage = (e) => {
             const data = JSON.parse(e.data);
             if (data.step === 'yt-dlp') {
-                ytdlpBar.style.width = (data.percent || 0) + '%';
-                ytdlpPercent.textContent = (data.percent || 0) + '%';
-                ytdlpStatus.textContent = data.status || '';
+                if (ytdlpBar) ytdlpBar.style.width = (data.percent || 0) + '%';
+                if (ytdlpPercent) ytdlpPercent.textContent = (data.percent || 0) + '%';
+                if (ytdlpStatus) ytdlpStatus.textContent = data.status || '';
             } else if (data.step === 'ffmpeg') {
-                ffmpegBar.style.width = (data.percent || 0) + '%';
-                ffmpegPercent.textContent = (data.percent || 0) + '%';
-                ffmpegStatus.textContent = data.status || '';
+                if (ffmpegBar) ffmpegBar.style.width = (data.percent || 0) + '%';
+                if (ffmpegPercent) ffmpegPercent.textContent = (data.percent || 0) + '%';
+                if (ffmpegStatus) ffmpegStatus.textContent = data.status || '';
             } else if (data.step === 'all' && data.status === 'done') {
                 evtSource.close();
-                ytdlpBar.style.width = '100%';
-                ffmpegBar.style.width = '100%';
-                ytdlpPercent.textContent = '100%';
-                ffmpegPercent.textContent = '100%';
-                ytdlpStatus.textContent = 'Done';
-                ffmpegStatus.textContent = 'Done';
-                btnSetupDownload.disabled = false;
-                btnSetupDownload.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg';
-                setupComplete.classList.remove('hidden');
+                if (ytdlpBar) ytdlpBar.style.width = '100%';
+                if (ffmpegBar) ffmpegBar.style.width = '100%';
+                if (ytdlpPercent) ytdlpPercent.textContent = '100%';
+                if (ffmpegPercent) ffmpegPercent.textContent = '100%';
+                if (ytdlpStatus) ytdlpStatus.textContent = 'Done';
+                if (ffmpegStatus) ffmpegStatus.textContent = 'Done';
+                cleanup();
+                if (setupComplete) setupComplete.classList.remove('hidden');
+                checkSetupStatus();
             } else if (data.step === 'error') {
                 evtSource.close();
-                ytdlpStatus.textContent = 'Error';
-                ffmpegStatus.textContent = 'Error';
-                btnSetupDownload.disabled = false;
-                btnSetupDownload.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg';
+                if (ytdlpStatus) ytdlpStatus.textContent = 'Error';
+                if (ffmpegStatus) ffmpegStatus.textContent = 'Error';
+                cleanup();
+                showToast(data.error || 'Setup failed', 'error');
             }
         };
 
         evtSource.onerror = () => {
             evtSource.close();
-            ytdlpStatus.textContent = 'Error';
-            ffmpegStatus.textContent = 'Error';
-            btnSetupDownload.disabled = false;
-            btnSetupDownload.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg';
+            if (ytdlpStatus) ytdlpStatus.textContent = 'Error';
+            if (ffmpegStatus) ffmpegStatus.textContent = 'Error';
+            cleanup();
         };
     });
 
-    // --- Downloads Tab ---
+    // ======================== DOWNLOADS TAB ========================
+
     const filesLoading = document.getElementById('filesLoading');
     const filesEmpty = document.getElementById('filesEmpty');
     const filesTableWrapper = document.getElementById('filesTableWrapper');
     const filesBody = document.getElementById('filesBody');
 
-    const formatFileSize = (bytes) => {
-        if (!bytes || bytes === 0) return '0 B';
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(1024));
-        const size = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
-        return `${size} ${units[i]}`;
-    };
-
-    const formatDate = (dateStr) => {
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return dateStr || 'Unknown';
-        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    };
-
     const loadFiles = async () => {
-        filesLoading.classList.remove('hidden');
-        filesEmpty.classList.add('hidden');
-        filesTableWrapper.classList.add('hidden');
-        filesBody.innerHTML = '';
+        if (filesLoading) filesLoading.classList.remove('hidden');
+        if (filesEmpty) filesEmpty.classList.add('hidden');
+        if (filesTableWrapper) filesTableWrapper.classList.add('hidden');
+        if (filesBody) filesBody.innerHTML = '';
 
         try {
             const response = await fetch('/api/files');
             if (!response.ok) throw new Error('Failed to fetch files');
             const files = await response.json();
 
-            filesLoading.classList.add('hidden');
+            if (filesLoading) filesLoading.classList.add('hidden');
 
             if (!files || files.length === 0) {
-                filesEmpty.classList.remove('hidden');
+                if (filesEmpty) filesEmpty.classList.remove('hidden');
                 return;
             }
 
-            filesTableWrapper.classList.remove('hidden');
+            if (filesTableWrapper) filesTableWrapper.classList.remove('hidden');
             files.forEach(file => {
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-50';
-                const filename = file.name || 'Unknown';
+                const filename = escapeHtml(file.name || 'Unknown');
                 const size = file.size || 0;
                 const date = file.date || file.modified || file.created || '';
 
@@ -402,18 +665,781 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatFileSize(size)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(date)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <a href="/api/files/${encodeURIComponent(filename)}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                        <a href="/api/files/${encodeURIComponent(file.name || '')}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                             <i class="fa-solid fa-download mr-1.5"></i>Download
                         </a>
                     </td>
                 `;
-                filesBody.appendChild(tr);
+                if (filesBody) filesBody.appendChild(tr);
             });
         } catch (error) {
             console.error('Files fetch error:', error);
-            filesLoading.classList.add('hidden');
-            filesEmpty.classList.remove('hidden');
-            filesEmpty.querySelector('p').textContent = 'Failed to load files';
+            if (filesLoading) filesLoading.classList.add('hidden');
+            if (filesEmpty) {
+                filesEmpty.classList.remove('hidden');
+                const p = filesEmpty.querySelector('p');
+                if (p) p.textContent = 'Failed to load files';
+            }
         }
     };
+
+    // ======================== CHANNELS TAB ========================
+
+    const channelsTab = document.getElementById('tab-channels');
+    let channelList = null;
+    let channelResultsGrid = null;
+
+    if (channelsTab) {
+
+        channelList = document.getElementById('channelsGrid');
+        channelResultsGrid = document.getElementById('channelResultsGrid');
+
+        const channelUrlInput = document.getElementById('channelUrlInput');
+        const btnSubscribe = document.getElementById('btnSubscribe');
+        const btnCheckAllChannels = document.getElementById('btnCheckAllChannels');
+        const channelLoading = document.getElementById('channelsLoading');
+        const channelEmpty = document.getElementById('channelsEmpty');
+        const channelResultsWrapper = document.getElementById('channelResultsSection');
+
+        btnSubscribe.addEventListener('click', async () => {
+            const url = channelUrlInput.value.trim();
+            if (!url) return showToast('Please enter a channel URL', 'error');
+            try {
+                btnSubscribe.disabled = true;
+                btnSubscribe.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Subscribing...';
+                const response = await fetch('/api/channels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                if (!response.ok) {
+                    let errMsg = 'Failed to subscribe';
+                    try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
+                    throw new Error(errMsg);
+                }
+                channelUrlInput.value = '';
+                showToast('Channel subscribed successfully!', 'success');
+                await loadChannels();
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                btnSubscribe.disabled = false;
+                btnSubscribe.innerHTML = '<i class="fa-solid fa-plus mr-2"></i>Subscribe';
+            }
+        });
+
+        channelUrlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                btnSubscribe.click();
+            }
+        });
+
+        btnCheckAllChannels.addEventListener('click', async () => {
+            try {
+                btnCheckAllChannels.disabled = true;
+                btnCheckAllChannels.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Checking...';
+                const response = await fetch('/api/channels/check-all', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to check channels');
+                const result = await response.json();
+                showToast(`Checked all channels. ${result.newVideos || 0} new videos found.`, 'success');
+                await loadChannels();
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                btnCheckAllChannels.disabled = false;
+                btnCheckAllChannels.innerHTML = '<i class="fa-solid fa-rotate mr-2"></i>Check All for New';
+            }
+        });
+
+        const loadChannels = async () => {
+            if (channelLoading) channelLoading.classList.remove('hidden');
+            if (channelEmpty) channelEmpty.classList.add('hidden');
+            if (channelList) channelList.innerHTML = '';
+            if (channelResultsWrapper) channelResultsWrapper.classList.add('hidden');
+            if (channelResultsGrid) channelResultsGrid.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/channels');
+                if (!response.ok) throw new Error('Failed to fetch channels');
+                const channels = await response.json();
+
+                if (channelLoading) channelLoading.classList.add('hidden');
+
+                const channelArray = Array.isArray(channels) ? channels : (channels.channels || channels.subscriptions || []);
+                if (!channelArray || channelArray.length === 0) {
+                    if (channelEmpty) channelEmpty.classList.remove('hidden');
+                    updateTabBadge('channels', 0);
+                    return;
+                }
+
+                updateTabBadge('channels', channelArray.length);
+                channelArray.forEach(ch => {
+                    if (channelList) channelList.appendChild(createChannelCard(ch));
+                });
+            } catch (error) {
+                console.error('Channels fetch error:', error);
+                if (channelLoading) channelLoading.classList.add('hidden');
+                if (channelEmpty) {
+                    channelEmpty.classList.remove('hidden');
+                    const p = channelEmpty.querySelector('p:first-of-type');
+                    if (p) p.textContent = 'Failed to load channels';
+                }
+            }
+        };
+
+        const createChannelCard = (ch) => {
+            const card = document.createElement('div');
+            card.className = 'bg-white overflow-hidden shadow rounded-lg border border-gray-100 transition-transform hover:-translate-y-1 hover:shadow-lg duration-200';
+            card.id = `channel-card-${escapeHtml(ch.id || ch._id)}`;
+
+            const avatar = escapeHtml(ch.avatar || ch.thumbnail || ch.thumbnails?.high?.url || 'https://via.placeholder.com/80x80.png?text=Channel');
+            const name = escapeHtml(ch.name || ch.title || ch.channel || 'Unknown Channel');
+            const subs = ch.subscriber_count || ch.subscribers;
+            const videos = ch.video_count || ch.videoCount;
+            const lastChecked = ch.last_checked || ch.lastChecked;
+            const id = ch.id || ch._id;
+            const escapedId = escapeHtml(id);
+
+            card.innerHTML = `
+                <div class="p-5">
+                    <div class="flex items-start gap-4">
+                        <img class="w-16 h-16 rounded-full object-cover border-2 border-gray-200 flex-shrink-0" src="${avatar}" alt="Avatar" onerror="this.src='https://via.placeholder.com/80x80.png?text=Channel'">
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-base font-semibold text-gray-900 truncate" title="${name}">${name}</h3>
+                            <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                ${subs ? `<span><i class="fa-solid fa-users mr-1"></i>${subs >= 1000000 ? (subs / 1000000).toFixed(1) + 'M' : subs >= 1000 ? (subs / 1000).toFixed(1) + 'K' : subs}</span>` : ''}
+                                ${videos ? `<span><i class="fa-solid fa-video mr-1"></i>${videos} videos</span>` : ''}
+                                ${lastChecked ? `<span><i class="fa-solid fa-clock mr-1"></i>${formatDate(lastChecked)}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <button class="btn-scrape-videos px-3 py-1.5 text-xs font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 transition-colors" data-channel-id="${escapedId}">
+                            <i class="fa-solid fa-list mr-1"></i>Videos
+                        </button>
+                        <button class="btn-scrape-shorts px-3 py-1.5 text-xs font-medium rounded-md text-white bg-pink-600 hover:bg-pink-700 transition-colors" data-channel-id="${escapedId}">
+                            <i class="fa-solid fa-bolt mr-1"></i>Shorts
+                        </button>
+                        <button class="btn-scrape-streams px-3 py-1.5 text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors" data-channel-id="${escapedId}">
+                            <i class="fa-solid fa-tower-broadcast mr-1"></i>Streams
+                        </button>
+                        <button class="btn-unsubscribe px-3 py-1.5 text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors ml-auto" data-channel-id="${escapedId}">
+                            <i class="fa-solid fa-trash mr-1"></i>Unsubscribe
+                        </button>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn-toggle-settings text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1" data-channel-id="${escapedId}">
+                            <i class="fa-solid fa-cog"></i> Settings <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                        </button>
+                        <div class="channel-settings hidden mt-2 p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2" data-channel-id="${escapedId}">
+                            <label class="flex items-center gap-2 text-sm text-gray-700">
+                                <input type="checkbox" class="chk-autodownload h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" ${ch.autoDownload ? 'checked' : ''} data-channel-id="${escapedId}">
+                                Auto-download new videos
+                            </label>
+                            <div class="text-xs text-gray-500 font-medium">Scrape Types:</div>
+                            <div class="flex flex-wrap gap-3">
+                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
+                                    <input type="checkbox" class="chk-scrape-type h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" data-channel-id="${escapedId}" data-type="videos" ${(!ch.scrapeTypes || ch.scrapeTypes.includes('videos')) ? 'checked' : ''}>
+                                    Videos
+                                </label>
+                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
+                                    <input type="checkbox" class="chk-scrape-type h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" data-channel-id="${escapedId}" data-type="shorts" ${(ch.scrapeTypes && ch.scrapeTypes.includes('shorts')) ? 'checked' : ''}>
+                                    Shorts
+                                </label>
+                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
+                                    <input type="checkbox" class="chk-scrape-type h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" data-channel-id="${escapedId}" data-type="streams" ${(ch.scrapeTypes && ch.scrapeTypes.includes('streams')) ? 'checked' : ''}>
+                                    Streams
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Scrape Videos
+            card.querySelector('.btn-scrape-videos')?.addEventListener('click', () => scrapeChannel(id, ['videos']));
+            card.querySelector('.btn-scrape-shorts')?.addEventListener('click', () => scrapeChannel(id, ['shorts']));
+            card.querySelector('.btn-scrape-streams')?.addEventListener('click', () => scrapeChannel(id, ['streams']));
+
+            // Unsubscribe
+            card.querySelector('.btn-unsubscribe')?.addEventListener('click', async () => {
+                if (!confirm(`Unsubscribe from "${name}"?`)) return;
+                try {
+                    const response = await fetch(`/api/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                    if (!response.ok) throw new Error('Failed to unsubscribe');
+                    showToast('Unsubscribed successfully', 'success');
+                    card.remove();
+                    updateTabBadge('channels', parseInt(document.querySelector('.tab-btn[data-tab="channels"] .tab-badge')?.textContent || '0') - 1);
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+            });
+
+            // Toggle settings
+            card.querySelector('.btn-toggle-settings')?.addEventListener('click', (e) => {
+                const settings = card.querySelector('.channel-settings');
+                const icon = e.currentTarget.querySelector('.fa-chevron-down');
+                if (settings) {
+                    settings.classList.toggle('hidden');
+                    if (icon) icon.style.transform = settings.classList.contains('hidden') ? '' : 'rotate(180deg)';
+                }
+            });
+
+            // Auto-download toggle
+            card.querySelector('.chk-autodownload')?.addEventListener('change', async (e) => {
+                try {
+                    await fetch(`/api/channels/${encodeURIComponent(id)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ autoDownload: e.target.checked })
+                    });
+                } catch (error) {
+                    showToast('Failed to update settings', 'error');
+                }
+            });
+
+            // Scrape type checkboxes
+            card.querySelectorAll('.chk-scrape-type').forEach(cb => {
+                cb.addEventListener('change', async () => {
+                    const checkedTypes = [];
+                    card.querySelectorAll('.chk-scrape-type:checked').forEach(c => checkedTypes.push(c.dataset.type));
+                    try {
+                        await fetch(`/api/channels/${encodeURIComponent(id)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ scrapeTypes: checkedTypes })
+                        });
+                    } catch (error) {
+                        showToast('Failed to update settings', 'error');
+                    }
+                });
+            });
+
+            return card;
+        };
+
+        const scrapeChannel = async (channelId, types) => {
+            const wrapper = document.getElementById('channelResultsWrapper');
+            const grid = document.getElementById('channelResultsGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            if (wrapper) wrapper.classList.remove('hidden');
+            grid.innerHTML = '<div class="col-span-full text-center py-8"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Scraping...</p></div>';
+
+            try {
+                const response = await fetch(`/api/channels/${encodeURIComponent(channelId)}/scrape`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ types })
+                });
+                if (!response.ok) {
+                    let errMsg = 'Failed to scrape';
+                    try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
+                    throw new Error(errMsg);
+                }
+                const data = await response.json();
+                const videos = data.videos || data.entries || data || [];
+                const videoArray = Array.isArray(videos) ? videos : [];
+                grid.innerHTML = '';
+                if (videoArray.length === 0) {
+                    grid.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500"><i class="fa-solid fa-video-slash text-3xl mb-2"></i><p>No videos found</p></div>';
+                } else {
+                    const titleEl = wrapper?.querySelector('h3') || document.querySelector('#channelResultsWrapper h3');
+                    if (titleEl) titleEl.textContent = `Scraped Videos (${videoArray.length})`;
+
+                    videoArray.forEach(v => {
+                        if (v) grid.appendChild(createVideoCard(v));
+                    });
+                }
+            } catch (error) {
+                grid.innerHTML = `<div class="col-span-full text-center py-8 text-red-500"><i class="fa-solid fa-circle-xmark text-3xl mb-2"></i><p>${escapeHtml(error.message)}</p></div>`;
+                showToast(error.message, 'error');
+            }
+        };
+
+        window.loadChannels = loadChannels;
+    }
+
+    // ======================== QUEUE TAB ========================
+
+    const queueTab = document.getElementById('tab-queue');
+    let queueJobsBody = null;
+    let concurrencyInput = null;
+    let concurrencyDisplay = null;
+    let queueFilter = 'all';
+
+    if (queueTab) {
+
+        queueJobsBody = document.getElementById('queueBody');
+        concurrencyInput = document.getElementById('concurrencySlider');
+        concurrencyDisplay = document.getElementById('concurrencyValue');
+        const btnCancelAll = document.getElementById('btnCancelAll');
+        const queueLoading = document.getElementById('queueLoading');
+        const queueEmpty = document.getElementById('queueEmpty');
+        const queueTableWrapper = document.getElementById('queueTableWrapper');
+
+        // Filter buttons
+        document.querySelectorAll('.queue-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.queue-filter-btn').forEach(b => {
+                    b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                    b.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
+                });
+                btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
+                btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                queueFilter = btn.dataset.status;
+                renderQueueJobs();
+            });
+        });
+        // Set initial active filter
+        document.querySelectorAll('.queue-filter-btn').forEach(btn => {
+            if (btn.dataset.status === 'all' || (!btn.dataset.status && btn.textContent.trim() === 'All')) {
+                btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
+                btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+            }
+        });
+
+        concurrencyInput.addEventListener('change', async () => {
+            const val = parseInt(concurrencyInput.value);
+            if (isNaN(val) || val < 1 || val > 5) return;
+            try {
+                const response = await fetch('/api/download/concurrency', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ concurrency: val })
+                });
+                if (!response.ok) throw new Error('Failed to set concurrency');
+                if (concurrencyDisplay) concurrencyDisplay.textContent = val;
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
+        btnCancelAll.addEventListener('click', async () => {
+            if (!confirm('Cancel all queued and downloading jobs?')) return;
+            try {
+                const response = await fetch('/api/download/queue/cancel-all', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to cancel all');
+                showToast('All jobs cancelled', 'success');
+                renderQueueJobs();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
+        // Fetch current concurrency on load
+        const fetchConcurrency = async () => {
+            try {
+                const response = await fetch('/api/download/concurrency');
+                if (!response.ok) return;
+                const data = await response.json();
+                const val = (data && typeof data.concurrency === 'number') ? data.concurrency : 2;
+                if (concurrencyInput) concurrencyInput.value = val;
+                if (concurrencyDisplay) concurrencyDisplay.textContent = val;
+            } catch (e) {}
+        };
+
+        // Queue data
+        let queueData = [];
+
+        const renderQueueJobs = () => {
+            if (!queueJobsBody) return;
+
+            const filtered = queueFilter === 'all' ? queueData : queueData.filter(j => j.status === queueFilter);
+
+            const activeCount = queueData.filter(j => j.status === 'queued' || j.status === 'downloading').length;
+            updateTabBadge('queue', activeCount);
+
+            if (queueData.length === 0) {
+                if (queueLoading) queueLoading.classList.add('hidden');
+                if (queueEmpty) queueEmpty.classList.remove('hidden');
+                if (queueTableWrapper) queueTableWrapper.classList.add('hidden');
+                return;
+            }
+
+            if (queueLoading) queueLoading.classList.add('hidden');
+            if (queueEmpty) queueEmpty.classList.add('hidden');
+            if (queueTableWrapper) queueTableWrapper.classList.remove('hidden');
+
+            queueJobsBody.innerHTML = '';
+            if (filtered.length === 0) {
+                queueJobsBody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No ${escapeHtml(queueFilter)} jobs</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(job => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                const statusColors = {
+                    queued: 'bg-yellow-100 text-yellow-800',
+                    downloading: 'bg-blue-100 text-blue-800',
+                    completed: 'bg-green-100 text-green-800',
+                    failed: 'bg-red-100 text-red-800',
+                };
+                const statusIcons = {
+                    queued: '<i class="fa-solid fa-clock"></i>',
+                    downloading: '<i class="fa-solid fa-arrow-down"></i>',
+                    completed: '<i class="fa-solid fa-check"></i>',
+                    failed: '<i class="fa-solid fa-xmark"></i>',
+                };
+                const status = job.status || 'queued';
+                const progress = job.progress || 0;
+                const title = escapeHtml(job.title || job.url || 'Unknown');
+                const id = job.id || job._id;
+                const escapedId = escapeHtml(id);
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 max-w-xs truncate" title="${title}">
+                        ${title}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status] || statusColors.queued}">
+                            ${statusIcons[status] || ''} ${status.charAt(0).toUpperCase() + status.slice(1)}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center gap-3">
+                            <div class="flex-1 bg-gray-200 rounded-full h-2 min-w-[80px]">
+                                <div class="h-2 rounded-full transition-all duration-300 ${status === 'completed' ? 'bg-green-500' : status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}" style="width: ${progress}%"></div>
+                            </div>
+                            <span class="text-xs text-gray-500 w-10 text-right">${status === 'completed' ? '100' : status === 'failed' ? '-' : Math.round(progress)}%</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        ${(status === 'queued' || status === 'downloading') ? `<button class="btn-cancel-job px-3 py-1.5 text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors" data-job-id="${escapedId}"><i class="fa-solid fa-ban mr-1"></i>Cancel</button>` : ''}
+                        ${status === 'completed' ? `<span class="text-xs text-green-600"><i class="fa-solid fa-check-circle mr-1"></i>Done</span>` : ''}
+                        ${status === 'failed' ? `<span class="text-xs text-red-500" title="${escapeHtml(job.error || '')}"><i class="fa-solid fa-circle-exclamation mr-1"></i>Failed</span>` : ''}
+                    </td>
+                `;
+
+                const cancelBtn = tr.querySelector('.btn-cancel-job');
+                if (cancelBtn) {
+                    cancelBtn.addEventListener('click', async () => {
+                        const jobId = cancelBtn.dataset.jobId;
+                        try {
+                            const response = await fetch(`/api/download/queue/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+                            if (!response.ok) throw new Error('Failed to cancel');
+                            showToast('Job cancelled', 'info');
+                            renderQueueJobs();
+                        } catch (error) {
+                            showToast(error.message, 'error');
+                        }
+                    });
+                }
+
+                queueJobsBody.appendChild(tr);
+            });
+        };
+
+        const loadQueueJobs = async () => {
+            try {
+                const response = await fetch('/api/download/queue');
+                if (!response.ok) throw new Error('Failed to fetch queue');
+                const data = await response.json();
+                queueData = Array.isArray(data) ? data : (data.jobs || data.queue || []);
+                renderQueueJobs();
+            } catch (error) {
+                console.error('Queue fetch error:', error);
+            }
+        };
+
+        const initQueueSSE = () => {
+            fetchConcurrency();
+            loadQueueJobs();
+
+            if (queueEventSource) { queueEventSource.close(); queueEventSource = null; }
+            if (queuePollInterval) { clearInterval(queuePollInterval); queuePollInterval = null; }
+
+            try {
+                queueEventSource = new EventSource('/api/download/queue/events');
+                queueEventSource.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.jobs) {
+                            queueData = data.jobs;
+                        } else if (data.job) {
+                            const idx = queueData.findIndex(j => (j.id || j._id) === (data.job.id || data.job._id));
+                            if (idx >= 0) {
+                                queueData[idx] = { ...queueData[idx], ...data.job };
+                            } else {
+                                queueData.push(data.job);
+                            }
+                        } else if (Array.isArray(data)) {
+                            queueData = data;
+                        }
+                        renderQueueJobs();
+                    } catch (err) {}
+                };
+                queueEventSource.onerror = () => {
+                    // Fallback to polling if SSE fails
+                    if (queueEventSource) { queueEventSource.close(); queueEventSource = null; }
+                    if (!queuePollInterval) {
+                        queuePollInterval = setInterval(loadQueueJobs, 3000);
+                    }
+                };
+            } catch (err) {
+                // Fallback to polling
+                if (!queuePollInterval) {
+                    queuePollInterval = setInterval(loadQueueJobs, 3000);
+                }
+            }
+        };
+
+        window.renderQueueJobs = renderQueueJobs;
+        window.loadQueueJobs = loadQueueJobs;
+    }
+
+    // ======================== OPTIONS TAB ========================
+
+    const optionsTab = document.getElementById('tab-options');
+    let optionsForm = null;
+    let optionInputs = {};
+
+    if (optionsTab) {
+
+        optionsForm = document.getElementById('optionsContainer');
+        const btnApplyOptions = document.getElementById('btnSaveOptions');
+        const btnResetOptions = document.getElementById('btnResetOptions');
+
+        const categoryLabels = {
+            general: 'General',
+            videoSelection: 'Video Selection',
+            downloadOptions: 'Download Options',
+            filesystem: 'Filesystem',
+            thumbnails: 'Thumbnails',
+            subtitles: 'Subtitles',
+            postProcessing: 'Post-Processing',
+            network: 'Network',
+            verbosity: 'Verbosity / Logging',
+        };
+
+        const loadOptions = async () => {
+            if (optionsForm) {
+                optionsForm.innerHTML = '<div class="flex flex-col items-center justify-center py-16"><div class="loader mb-4"></div><p class="text-gray-400">Loading options...</p></div>';
+            }
+            optionInputs = {};
+
+            try {
+                const response = await fetch('/api/options');
+                if (!response.ok) throw new Error('Failed to fetch options');
+                const data = await response.json();
+                const optionsData = data.options || data.categories || data;
+
+                // Loading removed when form is built
+
+                if (!optionsForm) return;
+                optionsForm.innerHTML = '';
+
+                const categories = Object.entries(optionsData);
+                if (categories.length === 0) {
+                    optionsForm.innerHTML = '<p class="text-gray-500 text-center py-8">No options available</p>';
+                    optionsForm.classList.remove('hidden');
+                    return;
+                }
+
+                categories.forEach(([category, opts]) => {
+                    if (!Array.isArray(opts) || opts.length === 0) return;
+                    const section = document.createElement('div');
+                    section.className = 'bg-white shadow rounded-lg border border-gray-200 overflow-hidden';
+
+                    const label = categoryLabels[category] || category.charAt(0).toUpperCase() + category.slice(1);
+                    section.innerHTML = `
+                        <button class="option-category-header w-full flex items-center justify-between px-6 py-4 bg-gray-50 hover:bg-gray-100 transition-colors text-left" data-category="${category}">
+                            <h3 class="text-base font-semibold text-gray-900">${escapeHtml(label)}</h3>
+                            <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-200"></i>
+                        </button>
+                        <div class="option-category-body px-6 py-4 space-y-3" data-category="${category}"></div>
+                    `;
+
+                    const body = section.querySelector('.option-category-body');
+                    opts.forEach(opt => {
+                        const row = createOptionRow(opt);
+                        if (row) body.appendChild(row);
+                    });
+
+                    // Toggle collapsible
+                    const header = section.querySelector('.option-category-header');
+                    header.addEventListener('click', () => {
+                        const bodyDiv = section.querySelector('.option-category-body');
+                        const icon = header.querySelector('.fa-chevron-down');
+                        if (bodyDiv) {
+                            bodyDiv.classList.toggle('hidden');
+                            if (icon) icon.style.transform = bodyDiv.classList.contains('hidden') ? 'rotate(-90deg)' : '';
+                        }
+                    });
+
+                    optionsForm.appendChild(section);
+                });
+
+                optionsForm.classList.remove('hidden');
+            } catch (error) {
+                console.error('Options fetch error:', error);
+                if (optionsForm) {
+                    optionsForm.innerHTML = `<div class="text-center py-12 text-red-500"><i class="fa-solid fa-circle-xmark text-3xl mb-2"></i><p>Failed to load options: ${escapeHtml(error.message)}</p></div>`;
+                }
+            }
+        };
+
+        const createOptionRow = (opt) => {
+            if (!opt || !opt.flag) return null;
+            const div = document.createElement('div');
+            div.className = 'flex items-start gap-4 py-2 border-b border-gray-100 last:border-0';
+
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'w-1/3 flex-shrink-0';
+
+            const label = document.createElement('label');
+            label.className = 'block text-sm font-medium text-gray-700';
+            label.textContent = opt.label || opt.flag;
+            if (opt.description) {
+                label.title = opt.description;
+                label.className += ' cursor-help';
+                label.innerHTML += ' <i class="fa-solid fa-circle-info text-gray-400 text-[10px]"></i>';
+            }
+            labelDiv.appendChild(label);
+
+            if (opt.flag) {
+                const flagCode = document.createElement('code');
+                flagCode.className = 'text-xs text-gray-400 mt-0.5 block';
+                flagCode.textContent = opt.flag + (opt.param ? ` ${opt.param}` : '');
+                labelDiv.appendChild(flagCode);
+            }
+
+            div.appendChild(labelDiv);
+
+            const inputDiv = document.createElement('div');
+            inputDiv.className = 'flex-1';
+
+            const inputId = `opt-${opt.flag.replace(/[^a-zA-Z0-9-]/g, '_')}`;
+
+            switch (opt.type) {
+                case 'boolean': {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'flex items-center';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = inputId;
+                    checkbox.className = 'h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer';
+                    checkbox.dataset.flag = opt.flag;
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.checked) currentOptions[opt.flag] = true;
+                        else delete currentOptions[opt.flag];
+                    });
+                    wrapper.appendChild(checkbox);
+                    const checkLabel = document.createElement('span');
+                    checkLabel.className = 'ml-2 text-sm text-gray-500';
+                    checkLabel.textContent = 'Enabled';
+                    wrapper.appendChild(checkLabel);
+                    inputDiv.appendChild(wrapper);
+                    optionInputs[opt.flag] = checkbox;
+                    break;
+                }
+                case 'number': {
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.id = inputId;
+                    input.placeholder = opt.param || 'Number';
+                    input.className = 'block w-full px-3 py-2 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md border shadow-sm';
+                    input.dataset.flag = opt.flag;
+                    input.addEventListener('change', () => {
+                        if (input.value) currentOptions[opt.flag] = input.value;
+                        else delete currentOptions[opt.flag];
+                    });
+                    inputDiv.appendChild(input);
+                    optionInputs[opt.flag] = input;
+                    break;
+                }
+                case 'choice': {
+                    const select = document.createElement('select');
+                    select.id = inputId;
+                    select.className = 'block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md border shadow-sm';
+                    select.dataset.flag = opt.flag;
+                    const emptyOpt = document.createElement('option');
+                    emptyOpt.value = '';
+                    emptyOpt.textContent = 'Default';
+                    select.appendChild(emptyOpt);
+                    (opt.choices || []).forEach(choice => {
+                        const optEl = document.createElement('option');
+                        optEl.value = choice;
+                        optEl.textContent = choice;
+                        select.appendChild(optEl);
+                    });
+                    select.addEventListener('change', () => {
+                        if (select.value) currentOptions[opt.flag] = select.value;
+                        else delete currentOptions[opt.flag];
+                    });
+                    inputDiv.appendChild(select);
+                    optionInputs[opt.flag] = select;
+                    break;
+                }
+                case 'string':
+                default: {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.id = inputId;
+                    input.placeholder = opt.param || 'Value';
+                    input.className = 'block w-full px-3 py-2 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md border shadow-sm';
+                    input.dataset.flag = opt.flag;
+                    input.addEventListener('change', () => {
+                        if (input.value) currentOptions[opt.flag] = input.value;
+                        else delete currentOptions[opt.flag];
+                    });
+                    inputDiv.appendChild(input);
+                    optionInputs[opt.flag] = input;
+                    break;
+                }
+            }
+
+            div.appendChild(inputDiv);
+            return div;
+        };
+
+        btnApplyOptions.addEventListener('click', async () => {
+            try {
+                // Collect all current option values from inputs
+                Object.entries(optionInputs).forEach(([flag, el]) => {
+                    if (el.type === 'checkbox') {
+                        if (el.checked) currentOptions[flag] = true;
+                        else delete currentOptions[flag];
+                    } else if (el.value) {
+                        currentOptions[flag] = el.value;
+                    } else {
+                        delete currentOptions[flag];
+                    }
+                });
+
+                const response = await fetch('/api/options/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ options: currentOptions })
+                });
+                if (!response.ok) throw new Error('Failed to apply options');
+                showToast('Options applied successfully!', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
+        btnResetOptions.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/options/reset', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to reset options');
+                currentOptions = {};
+                showToast('Options reset to defaults', 'info');
+                loadOptions();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
+        window.loadOptions = loadOptions;
+    }
+
+    // ======================== INIT ========================
+
+    activateTab('download');
+
+    // Expose activateTab globally so toasts can link to tabs
+    window.activateTab = activateTab;
 });

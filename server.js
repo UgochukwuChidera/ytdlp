@@ -4,13 +4,48 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-import { downloadFile, extractFfmpeg } from './setup-utils.js';
 import ytDlp from 'yt-dlp-exec';
+import {
+    checkBinaries,
+    getBinDir,
+    downloadBinaries,
+    getLatestYtdlpVersion,
+    getLatestFfmpegVersion,
+} from './src/binary-manager.js';
+import {
+    addJob,
+    getJobs,
+    getJob,
+    cancelJob,
+    cancelAll,
+    onProgress,
+    getConcurrency,
+    setConcurrency,
+} from './src/download-queue.js';
+import {
+    subscribe,
+    unsubscribe,
+    getSubscriptions,
+    getChannel,
+    updateChannel,
+    scrapeChannelVideos,
+    scrapeAllChannels,
+} from './src/channel-manager.js';
+import { YTDLP_OPTIONS } from './src/ytdlp-options.js';
+const YTDLP_OPTIONS_DEFAULTS = JSON.parse(JSON.stringify(YTDLP_OPTIONS));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const binDir = path.join(__dirname, 'bin');
 const downloadsDir = path.join(__dirname, 'downloads');
+
+const QUALITY_MAP = {
+    best: 'bestvideo+bestaudio/best',
+    '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+    '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+    '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+};
+
+const DANGEROUS_FLAGS = ['--exec', '--exec-before-download', '--postprocessor-args', '--ppa', '--external-downloader-args', '--downloader-args'];
 
 const app = express();
 
@@ -18,66 +53,141 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Ensure directories exist
-if (!fs.existsSync(binDir)) fs.mkdirSync(binDir);
-if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
+if (!fs.existsSync(downloadsDir)) {
+    fs.mkdirSync(downloadsDir, { recursive: true });
+}
+
+app.get('/api/status', (req, res) => {
+    try {
+        const binaries = checkBinaries();
+        const jobs = getJobs();
+        const concurrency = getConcurrency();
+
+        res.json({
+            binaries,
+            queue: {
+                jobs,
+                concurrency,
+                active: jobs.filter(j => j.status === 'downloading').length,
+                queued: jobs.filter(j => j.status === 'queued').length,
+                completed: jobs.filter(j => j.status === 'completed').length,
+                failed: jobs.filter(j => j.status === 'failed').length,
+            },
+            options: YTDLP_OPTIONS,
+        });
+    } catch (error) {
+        console.error('Status error:', error);
+        res.status(500).json({ error: 'Failed to get status' });
+    }
+});
+
+app.get('/api/updates', async (req, res) => {
+    try {
+        const binaries = checkBinaries();
+        const [latestYtdlp, latestFfmpeg] = await Promise.all([
+            getLatestYtdlpVersion(),
+            getLatestFfmpegVersion(),
+        ]);
+
+        const ytDlpBin = binaries.find(b => b.name === 'yt-dlp');
+        const ffmpegBin = binaries.find(b => b.name === 'ffmpeg');
+
+        res.json({
+            ytDlp: {
+                installed: ytDlpBin?.version || null,
+                latest: latestYtdlp,
+                updateAvailable: ytDlpBin?.version ? ytDlpBin.version !== latestYtdlp : true,
+            },
+            ffmpeg: {
+                installed: ffmpegBin?.version || null,
+                latest: latestFfmpeg,
+                updateAvailable: ffmpegBin?.version ? ffmpegBin.version !== latestFfmpeg : true,
+            },
+        });
+    } catch (error) {
+        console.error('Update check error:', error);
+        res.status(500).json({ error: 'Failed to check for updates' });
+    }
+});
 
 app.get('/api/setup', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const sendMsg = (msg) => {
-        res.write(`data: ${JSON.stringify(msg)}\n\n`);
+    let sendMsg = (msg) => {
+        try { res.write(`data: ${JSON.stringify(msg)}\n\n`); } catch {}
     };
 
+    req.on('close', () => {
+        sendMsg = () => {};
+    });
+
     try {
-        sendMsg({ step: 'yt-dlp', status: 'downloading', percent: 0 });
-        const ytdlpUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux';
-        const ytdlpPath = path.join(binDir, 'yt-dlp');
-        
-        let lastYtdlpPercent = -1;
-        await downloadFile(ytdlpUrl, ytdlpPath, (percent) => {
-            if (percent !== lastYtdlpPercent) {
-                sendMsg({ step: 'yt-dlp', status: 'downloading', percent });
-                lastYtdlpPercent = percent;
-            }
+        const binaries = checkBinaries();
+        sendMsg({ step: 'check', status: 'done', binaries });
+
+        const [latestYtdlp, latestFfmpeg] = await Promise.all([
+            getLatestYtdlpVersion(),
+            getLatestFfmpegVersion(),
+        ]);
+
+        sendMsg({
+            step: 'updates',
+            status: 'done',
+            updates: {
+                ytDlp: {
+                    latest: latestYtdlp,
+                    current: binaries.find(b => b.name === 'yt-dlp')?.version || null,
+                },
+                ffmpeg: {
+                    latest: latestFfmpeg,
+                    current: binaries.find(b => b.name === 'ffmpeg')?.version || null,
+                },
+            },
         });
-        fs.chmodSync(ytdlpPath, '755');
+
+        sendMsg({ step: 'download', status: 'starting' });
+
+        await downloadBinaries({
+            onProgress: (name, percent) => {
+                sendMsg({ step: name, status: 'downloading', percent });
+            },
+        });
+
         sendMsg({ step: 'yt-dlp', status: 'done', percent: 100 });
-
-        sendMsg({ step: 'ffmpeg', status: 'downloading', percent: 0 });
-        const ffmpegUrl = 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz';
-        const ffmpegTarPath = path.join(binDir, 'ffmpeg.tar.xz');
-        
-        let lastFfmpegPercent = -1;
-        await downloadFile(ffmpegUrl, ffmpegTarPath, (percent) => {
-            if (percent !== lastFfmpegPercent) {
-                sendMsg({ step: 'ffmpeg', status: 'downloading', percent });
-                lastFfmpegPercent = percent;
-            }
-        });
-        
-        sendMsg({ step: 'ffmpeg', status: 'extracting', percent: 100 });
-        await extractFfmpeg();
-        fs.chmodSync(path.join(binDir, 'ffmpeg'), '755');
-        fs.chmodSync(path.join(binDir, 'ffprobe'), '755');
         sendMsg({ step: 'ffmpeg', status: 'done', percent: 100 });
-
         sendMsg({ step: 'all', status: 'done' });
         res.end();
     } catch (err) {
-        console.error(err);
+        console.error('Setup error:', err);
         sendMsg({ step: 'error', error: err.message });
         res.end();
     }
 });
 
-// Since the prompt requires us to use the local bin/yt-dlp, let's create a wrapper function for metadata using spawn.
-// Wait, yt-dlp-exec uses system installed by default. We can use our local bin/yt-dlp by spawning it manually for metadata too, or just use yt-dlp-exec if it works, but the prompt says:
-// "Use child_process to spawn the local bin/yt-dlp binary, passing --ffmpeg-location bin/ if needed, and saving output to downloads/" for download.
-// For metadata it's fine to use ytDlp exec since it was there, but it's safer to just use local binary if setup was done. Let's stick to ytDlp for metadata for simplicity unless we see an issue.
-// Actually, `yt-dlp-exec` has an `ytDlp.exec` which we could use with local bin? No, yt-dlp-exec uses its own bundled yt-dlp. Let's keep metadata as is, and just use our bin/yt-dlp for downloading.
+app.get('/api/options', (req, res) => {
+    res.json(YTDLP_OPTIONS);
+});
+
+app.get('/api/format-list', async (req, res) => {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    try {
+        const data = await ytDlp(url, {
+            dumpSingleJson: true,
+            noPlaylist: true,
+            noWarnings: true,
+            noCallHome: true,
+        });
+        const formats = Array.isArray(data) ? data : (data.formats || []);
+        res.json(formats);
+    } catch (error) {
+        console.error('Format list error:', error);
+        res.status(500).json({ error: 'Failed to fetch format list' });
+    }
+});
 
 app.get('/api/metadata', async (req, res) => {
     const { url } = req.query;
@@ -88,7 +198,6 @@ app.get('/api/metadata', async (req, res) => {
             dumpSingleJson: true,
             noWarnings: true,
             noCallHome: true,
-            noCheckCertificates: true,
             preferFreeFormats: true,
             youtubeSkipDashManifest: true,
         });
@@ -107,7 +216,7 @@ app.get('/api/scrape', async (req, res) => {
         const data = await ytDlp(url, {
             dumpSingleJson: true,
             flatPlaylist: true,
-            noWarnings: true
+            noWarnings: true,
         });
         res.json(data);
     } catch (error) {
@@ -117,53 +226,69 @@ app.get('/api/scrape', async (req, res) => {
 });
 
 app.post('/api/download', (req, res) => {
-    const { url, format, quality, audioOnly } = req.body;
-    
+    const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
-    const ytdlpBin = path.join(binDir, 'yt-dlp');
-    if (!fs.existsSync(ytdlpBin)) {
-        return res.status(500).json({ error: 'yt-dlp binary not found. Please run setup first.' });
-    }
-
-    let ext = 'mp4';
-    const args = [
-        '--no-warnings',
-        '--ffmpeg-location', binDir,
-        '-P', downloadsDir
-    ];
-
-    if (audioOnly) {
-        args.push('--extract-audio');
-        ext = quality || 'mp3';
-        args.push('--audio-format', ext);
-        // Ensure yt-dlp saves with correct extension template
-        args.push('-o', `%(title)s.%(ext)s`);
-    } else {
-        ext = format || 'mp4';
-        if (format || quality) {
-            args.push('-f', `${quality || 'bestvideo'}[ext=${ext}]+bestaudio/best[ext=${ext}]/best`);
-        } else {
-            args.push('-f', 'best');
-        }
-        args.push('-o', `%(title)s.%(ext)s`);
-    }
-
-    args.push('--print', 'filename'); // Get the filename printed
-    args.push('--no-simulate'); // Ensure download actually happens
-    args.push(url);
-
     try {
+        const binDir = getBinDir();
+        const ytdlpBin = path.join(binDir, 'yt-dlp');
+        if (!fs.existsSync(ytdlpBin)) {
+            return res.status(500).json({ error: 'yt-dlp binary not found. Please run setup first.' });
+        }
+
+        const { format, quality, audioOnly, audioFormat, outputTemplate, extraArgs } = req.body;
+        const args = [
+            '--no-warnings',
+            '--ffmpeg-location', binDir,
+            '-P', downloadsDir,
+        ];
+
+        if (audioOnly) {
+            args.push('--extract-audio');
+            args.push('--audio-format', audioFormat || 'mp3');
+            args.push('-o', outputTemplate || '%(title)s.%(ext)s');
+        } else {
+            const ext = format || 'mp4';
+            if (format || quality) {
+                const baseSelector = QUALITY_MAP[quality] || QUALITY_MAP.best;
+                const selector = baseSelector.replace('/best', `[ext=${ext}]/best`).replace('bestvideo', `bestvideo[ext=${ext}]`).replace('bestaudio', `bestaudio[ext=${ext}]`);
+                args.push('-f', selector);
+            } else {
+                args.push('-f', 'best');
+            }
+            args.push('-o', outputTemplate || '%(title)s.%(ext)s');
+        }
+
+        if (extraArgs) {
+            let entries;
+            if (Array.isArray(extraArgs)) {
+                entries = extraArgs;
+            } else {
+                entries = Object.entries(extraArgs).map(([k, v]) => v === true ? k : [k, String(v)]).flat();
+            }
+            const filtered = [];
+            for (let i = 0; i < entries.length; i++) {
+                const flag = entries[i];
+                const isDangerous = DANGEROUS_FLAGS.some(df => flag === df || flag.startsWith(df + '=') || flag.startsWith('--' + df));
+                if (isDangerous) {
+                    if (typeof entries[i+1] === 'string' && !entries[i+1].startsWith('-')) i++;
+                    continue;
+                }
+                filtered.push(flag);
+            }
+            args.push(...filtered);
+        }
+
+        args.push('--print', 'filename');
+        args.push('--no-simulate');
+        args.push(url);
+
         const subprocess = spawn(ytdlpBin, args);
         let filename = '';
         let errData = '';
 
         subprocess.stdout.on('data', (data) => {
-            const out = data.toString();
-            // yt-dlp outputs lines. With --print filename, it prints the destination filename.
-            // But wait, it might print other things if there are info messages.
-            // Let's just collect the last non-empty line as filename.
-            filename += out;
+            filename += data.toString();
         });
 
         subprocess.stderr.on('data', (data) => {
@@ -173,7 +298,6 @@ app.post('/api/download', (req, res) => {
 
         subprocess.on('close', (code) => {
             if (code === 0) {
-                // Determine the actual filename saved
                 const lines = filename.trim().split('\n');
                 const finalFilename = path.basename(lines[lines.length - 1].trim());
                 res.json({ success: true, filename: finalFilename });
@@ -189,23 +313,179 @@ app.post('/api/download', (req, res) => {
                 res.status(500).json({ error: 'Failed to initiate download' });
             }
         });
-
     } catch (error) {
         console.error('Download init error:', error);
         res.status(500).json({ error: 'Failed to initiate download' });
     }
 });
 
+app.post('/api/download/queue/cancel-all', (req, res) => {
+    try {
+        cancelAll();
+        res.json({ success: true, message: 'All jobs cancelled' });
+    } catch (error) {
+        console.error('Cancel all error:', error);
+        res.status(500).json({ error: 'Failed to cancel all jobs' });
+    }
+});
+
+app.get('/api/download/queue/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const currentJobs = getJobs();
+    res.write(`data: ${JSON.stringify({ type: 'init', jobs: currentJobs })}\n\n`);
+
+    const unsub = onProgress((job) => {
+        try { res.write(`data: ${JSON.stringify({ type: 'update', job })}\n\n`); } catch {}
+    });
+
+    req.on('close', () => {
+        unsub();
+    });
+});
+
+app.post('/api/download/queue', (req, res) => {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    try {
+        const id = addJob(url, req.body);
+        const job = getJob(id);
+        res.status(201).json({ jobId: id, job });
+    } catch (error) {
+        console.error('Queue add error:', error);
+        res.status(500).json({ error: 'Failed to queue download' });
+    }
+});
+
+app.get('/api/download/queue', (req, res) => {
+    try {
+        const jobs = getJobs();
+        res.json({ jobs });
+    } catch (error) {
+        console.error('Queue list error:', error);
+        res.status(500).json({ error: 'Failed to list queue' });
+    }
+});
+
+app.get('/api/download/queue/:id', (req, res) => {
+    try {
+        const job = getJob(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+        res.json({ job });
+    } catch (error) {
+        console.error('Queue get error:', error);
+        res.status(500).json({ error: 'Failed to get job' });
+    }
+});
+
+app.delete('/api/download/queue/:id', (req, res) => {
+    try {
+        const cancelled = cancelJob(req.params.id);
+        if (!cancelled) return res.status(404).json({ error: 'Job not found or already finished' });
+        res.json({ success: true, message: 'Job cancelled' });
+    } catch (error) {
+        console.error('Queue cancel error:', error);
+        res.status(500).json({ error: 'Failed to cancel job' });
+    }
+});
+
+app.post('/api/channels/check-all', async (req, res) => {
+    try {
+        const results = await scrapeAllChannels();
+        res.json({ results });
+    } catch (error) {
+        console.error('Check all channels error:', error);
+        res.status(500).json({ error: 'Failed to check channels' });
+    }
+});
+
+app.get('/api/channels', (req, res) => {
+    try {
+        const channels = getSubscriptions();
+        res.json({ channels });
+    } catch (error) {
+        console.error('List channels error:', error);
+        res.status(500).json({ error: 'Failed to list channels' });
+    }
+});
+
+app.post('/api/channels', async (req, res) => {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    try {
+        const channel = await subscribe(url);
+        res.status(201).json({ channel });
+    } catch (error) {
+        console.error('Subscribe error:', error);
+        res.status(500).json({ error: 'Failed to subscribe' });
+    }
+});
+
+app.get('/api/channels/:id', (req, res) => {
+    try {
+        const channel = getChannel(req.params.id);
+        if (!channel) return res.status(404).json({ error: 'Channel not found' });
+        res.json({ channel });
+    } catch (error) {
+        console.error('Get channel error:', error);
+        res.status(500).json({ error: 'Failed to get channel' });
+    }
+});
+
+app.delete('/api/channels/:id', (req, res) => {
+    try {
+        const removed = unsubscribe(req.params.id);
+        if (!removed) return res.status(404).json({ error: 'Channel not found' });
+        res.json({ success: true, message: 'Unsubscribed' });
+    } catch (error) {
+        console.error('Unsubscribe error:', error);
+        res.status(500).json({ error: 'Failed to unsubscribe' });
+    }
+});
+
+app.put('/api/channels/:id', (req, res) => {
+    try {
+        const allowedFields = ['name', 'avatar', 'scrapeTypes', 'downloadOptions', 'autoDownload'];
+        const data = {};
+        for (const key of allowedFields) {
+            if (key in req.body) {
+                data[key] = req.body[key];
+            }
+        }
+        const channel = updateChannel(req.params.id, data);
+        if (!channel) return res.status(404).json({ error: 'Channel not found' });
+        res.json({ channel });
+    } catch (error) {
+        console.error('Update channel error:', error);
+        res.status(500).json({ error: 'Failed to update channel' });
+    }
+});
+
+app.post('/api/channels/:id/scrape', async (req, res) => {
+    try {
+        const types = req.body.types;
+        const results = await scrapeChannelVideos(req.params.id, types);
+        res.json({ results });
+    } catch (error) {
+        console.error('Scrape channel error:', error);
+        res.status(500).json({ error: error.message || 'Failed to scrape channel' });
+    }
+});
+
 app.get('/api/files', (req, res) => {
     fs.readdir(downloadsDir, (err, files) => {
         if (err) return res.status(500).json({ error: 'Failed to list files' });
-        
+
         const fileInfos = files.map(file => {
             const stats = fs.statSync(path.join(downloadsDir, file));
             return {
                 name: file,
                 size: stats.size,
-                created: stats.birthtime
+                created: stats.birthtime,
             };
         }).sort((a, b) => b.created - a.created);
 
@@ -215,7 +495,6 @@ app.get('/api/files', (req, res) => {
 
 app.get('/api/files/:filename', (req, res) => {
     const filename = req.params.filename;
-    // Basic security to prevent path traversal
     if (filename.includes('/') || filename.includes('..')) {
         return res.status(400).json({ error: 'Invalid filename' });
     }
@@ -225,6 +504,60 @@ app.get('/api/files/:filename', (req, res) => {
     }
     res.download(filePath);
 });
+
+
+// ======================== OPTIONS ENDPOINTS ========================
+
+app.post('/api/options/apply', (req, res) => {
+    try {
+        const { options } = req.body;
+        if (options && typeof options === 'object') {
+            for (const [key, value] of Object.entries(options)) {
+                YTDLP_OPTIONS[key] = value;
+            }
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Options apply error:', error);
+        res.status(500).json({ error: 'Failed to apply options' });
+    }
+});
+
+app.post('/api/options/reset', (req, res) => {
+    try {
+        Object.keys(YTDLP_OPTIONS).forEach(key => delete YTDLP_OPTIONS[key]);
+        Object.assign(YTDLP_OPTIONS, JSON.parse(JSON.stringify(YTDLP_OPTIONS_DEFAULTS)));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Options reset error:', error);
+        res.status(500).json({ error: 'Failed to reset options' });
+    }
+});
+
+app.get('/api/download/concurrency', (req, res) => {
+    try {
+        res.json({ concurrency: getConcurrency() });
+    } catch (error) {
+        console.error('Concurrency get error:', error);
+        res.status(500).json({ error: 'Failed to get concurrency' });
+    }
+});
+
+app.post('/api/download/concurrency', (req, res) => {
+    try {
+        const { concurrency } = req.body;
+        const val = parseInt(concurrency);
+        if (isNaN(val) || val < 1 || val > 5) {
+            return res.status(400).json({ error: 'Concurrency must be between 1 and 5' });
+        }
+        setConcurrency(val);
+        res.json({ success: true, concurrency: getConcurrency() });
+    } catch (error) {
+        console.error('Concurrency set error:', error);
+        res.status(500).json({ error: 'Failed to set concurrency' });
+    }
+});
+
 
 const PORT = process.env.PORT || 3000;
 if (process.env.NODE_ENV !== 'test') {
