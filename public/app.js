@@ -1,4 +1,32 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Tab System ---
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    const activateTab = (tabId) => {
+        tabBtns.forEach(btn => {
+            btn.classList.remove('tab-active');
+            btn.classList.add('text-gray-500', 'border-transparent');
+        });
+        tabContents.forEach(el => el.classList.add('hidden'));
+        const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+        if (activeBtn) {
+            activeBtn.classList.add('tab-active');
+            activeBtn.classList.remove('text-gray-500', 'border-transparent');
+        }
+        const activeContent = document.getElementById(`tab-${tabId}`);
+        if (activeContent) activeContent.classList.remove('hidden');
+
+        if (tabId === 'downloads') loadFiles();
+    };
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+    });
+
+    activateTab('download');
+
+    // --- Download Tab Elements ---
     const urlInput = document.getElementById('urlInput');
     const btnMetadata = document.getElementById('btnMetadata');
     const btnScrape = document.getElementById('btnScrape');
@@ -14,7 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsGrid = document.getElementById('resultsGrid');
     const resultsTitle = document.getElementById('resultsTitle');
 
-    // Handle Audio Only toggle to disable format/quality if needed
     audioOnlyToggle.addEventListener('change', (e) => {
         if (e.target.checked) {
             qualitySelect.disabled = true;
@@ -78,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const createVideoCard = (video) => {
         const card = document.createElement('div');
         card.className = 'bg-white overflow-hidden shadow rounded-lg flex flex-col transition-transform hover:-translate-y-1 hover:shadow-lg duration-200 border border-gray-100';
-        
+
         const thumbnail = video.thumbnail || 'https://via.placeholder.com/320x180.png?text=No+Thumbnail';
         const title = video.title || 'Unknown Title';
         const channel = video.uploader || video.channel || 'Unknown Channel';
@@ -106,7 +133,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        // Add event listener to the download button
         const downloadBtn = card.querySelector('.download-btn');
         downloadBtn.addEventListener('click', () => handleDownload(url, title, downloadBtn));
 
@@ -130,14 +156,11 @@ document.addEventListener('DOMContentLoaded', () => {
             showInfo(`Starting download for: ${title}`);
             const response = await fetch('/api/download', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) {
-                // Try to parse json error, if not just text
                 let errMsg = `HTTP Error ${response.status}`;
                 try {
                     const errText = await response.text();
@@ -147,31 +170,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     } catch (e) {
                         errMsg = errText || errMsg;
                     }
-                } catch(e) {}
+                } catch (e) {}
                 throw new Error(errMsg);
             }
 
-            // Get filename from Content-Disposition header if possible
             let filename = 'download';
             const disposition = response.headers.get('Content-Disposition');
             if (disposition && disposition.indexOf('attachment') !== -1) {
                 const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
                 const matches = filenameRegex.exec(disposition);
-                if (matches != null && matches[1]) { 
+                if (matches != null && matches[1]) {
                     filename = matches[1].replace(/['"]/g, '');
-                    // Decode URI encoded filename if needed
-                    try { filename = decodeURIComponent(filename); } catch(e) {}
+                    try { filename = decodeURIComponent(filename); } catch (e) {}
                 }
             } else {
-                // fallback extension
                 const ext = audioOnlyToggle.checked ? 'mp3' : formatSelect.value;
-                // create a safe filename
-                const safeTitle = title.replace(/[/\\\\?%*:|"<>]/g, '-').substring(0, 50);
+                const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '-').substring(0, 50);
                 filename = `${safeTitle}.${ext}`;
             }
 
             buttonEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Downloading...';
-            
+
             const blob = await response.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -182,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
             a.click();
             window.URL.revokeObjectURL(downloadUrl);
             document.body.removeChild(a);
-            
+
             showSuccess(`Download completed: ${filename}`);
         } catch (error) {
             console.error('Download error:', error);
@@ -206,11 +225,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error(data.error || 'Failed to fetch metadata');
 
             hideLoading();
-            statusMessage.classList.add('hidden'); // clear previous messages
+            statusMessage.classList.add('hidden');
             resultsGrid.innerHTML = '';
             resultsTitle.textContent = 'Single Video';
-            
-            // Render single video
+
             const card = createVideoCard(data);
             resultsGrid.appendChild(card);
             resultsContainer.classList.remove('hidden');
@@ -232,10 +250,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error(data.error || 'Failed to scrape URL');
 
             hideLoading();
-            statusMessage.classList.add('hidden'); // clear previous messages
+            statusMessage.classList.add('hidden');
             resultsGrid.innerHTML = '';
-            
-            // Data could be an array of entries, or an object containing entries
+
             let entries = [];
             if (Array.isArray(data)) {
                 entries = data;
@@ -244,10 +261,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (data.items) {
                 entries = data.items;
             } else if (data.id) {
-                // Single video returned
                 entries = [data];
             }
-            
+
             if (entries.length === 0) {
                 resultsTitle.textContent = 'No videos found';
             } else {
@@ -256,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (video) resultsGrid.appendChild(createVideoCard(video));
                 });
             }
-            
+
             resultsContainer.classList.remove('hidden');
         } catch (error) {
             hideLoading();
@@ -264,11 +280,140 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Allow pressing Enter in the URL input to trigger metadata fetch
     urlInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             btnMetadata.click();
         }
     });
+
+    // --- Setup Tab ---
+    const btnSetupDownload = document.getElementById('btnSetupDownload');
+    const setupProgress = document.getElementById('setupProgress');
+    const setupComplete = document.getElementById('setupComplete');
+    const ytdlpBar = document.getElementById('ytdlpBar');
+    const ffmpegBar = document.getElementById('ffmpegBar');
+    const ytdlpStatus = document.getElementById('ytdlpStatus');
+    const ffmpegStatus = document.getElementById('ffmpegStatus');
+    const ytdlpPercent = document.getElementById('ytdlpPercent');
+    const ffmpegPercent = document.getElementById('ffmpegPercent');
+
+    btnSetupDownload.addEventListener('click', () => {
+        btnSetupDownload.disabled = true;
+        btnSetupDownload.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Downloading...';
+        setupComplete.classList.add('hidden');
+        setupProgress.classList.remove('hidden');
+        ytdlpBar.style.width = '0%';
+        ffmpegBar.style.width = '0%';
+        ytdlpStatus.textContent = 'Starting...';
+        ffmpegStatus.textContent = 'Starting...';
+        ytdlpPercent.textContent = '0%';
+        ffmpegPercent.textContent = '0%';
+
+        const evtSource = new EventSource('/api/setup');
+
+        evtSource.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.step === 'yt-dlp') {
+                ytdlpBar.style.width = (data.percent || 0) + '%';
+                ytdlpPercent.textContent = (data.percent || 0) + '%';
+                ytdlpStatus.textContent = data.status || '';
+            } else if (data.step === 'ffmpeg') {
+                ffmpegBar.style.width = (data.percent || 0) + '%';
+                ffmpegPercent.textContent = (data.percent || 0) + '%';
+                ffmpegStatus.textContent = data.status || '';
+            } else if (data.step === 'all' && data.status === 'done') {
+                evtSource.close();
+                ytdlpBar.style.width = '100%';
+                ffmpegBar.style.width = '100%';
+                ytdlpPercent.textContent = '100%';
+                ffmpegPercent.textContent = '100%';
+                ytdlpStatus.textContent = 'Done';
+                ffmpegStatus.textContent = 'Done';
+                btnSetupDownload.disabled = false;
+                btnSetupDownload.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg';
+                setupComplete.classList.remove('hidden');
+            } else if (data.step === 'error') {
+                evtSource.close();
+                ytdlpStatus.textContent = 'Error';
+                ffmpegStatus.textContent = 'Error';
+                btnSetupDownload.disabled = false;
+                btnSetupDownload.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg';
+            }
+        };
+
+        evtSource.onerror = () => {
+            evtSource.close();
+            ytdlpStatus.textContent = 'Error';
+            ffmpegStatus.textContent = 'Error';
+            btnSetupDownload.disabled = false;
+            btnSetupDownload.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg';
+        };
+    });
+
+    // --- Downloads Tab ---
+    const filesLoading = document.getElementById('filesLoading');
+    const filesEmpty = document.getElementById('filesEmpty');
+    const filesTableWrapper = document.getElementById('filesTableWrapper');
+    const filesBody = document.getElementById('filesBody');
+
+    const formatFileSize = (bytes) => {
+        if (!bytes || bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        const size = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
+        return `${size} ${units[i]}`;
+    };
+
+    const formatDate = (dateStr) => {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr || 'Unknown';
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+
+    const loadFiles = async () => {
+        filesLoading.classList.remove('hidden');
+        filesEmpty.classList.add('hidden');
+        filesTableWrapper.classList.add('hidden');
+        filesBody.innerHTML = '';
+
+        try {
+            const response = await fetch('/api/files');
+            if (!response.ok) throw new Error('Failed to fetch files');
+            const files = await response.json();
+
+            filesLoading.classList.add('hidden');
+
+            if (!files || files.length === 0) {
+                filesEmpty.classList.remove('hidden');
+                return;
+            }
+
+            filesTableWrapper.classList.remove('hidden');
+            files.forEach(file => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                const filename = file.name || 'Unknown';
+                const size = file.size || 0;
+                const date = file.date || file.modified || file.created || '';
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${filename}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatFileSize(size)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(date)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <a href="/api/files/${encodeURIComponent(filename)}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                            <i class="fa-solid fa-download mr-1.5"></i>Download
+                        </a>
+                    </td>
+                `;
+                filesBody.appendChild(tr);
+            });
+        } catch (error) {
+            console.error('Files fetch error:', error);
+            filesLoading.classList.add('hidden');
+            filesEmpty.classList.remove('hidden');
+            filesEmpty.querySelector('p').textContent = 'Failed to load files';
+        }
+    };
 });
