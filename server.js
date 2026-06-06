@@ -29,7 +29,6 @@ import {
     getChannel,
     updateChannel,
     scrapeChannelVideos,
-    scrapeAllChannels,
 } from './src/channel-manager.js';
 import { YTDLP_OPTIONS } from './src/ytdlp-options.js';
 const YTDLP_OPTIONS_DEFAULTS = JSON.parse(JSON.stringify(YTDLP_OPTIONS));
@@ -360,6 +359,32 @@ app.post('/api/download/queue', (req, res) => {
     }
 });
 
+app.post('/api/download/queue/batch', (req, res) => {
+    const { urls, title } = req.body;
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+        return res.status(400).json({ error: 'URLs array is required' });
+    }
+    try {
+        const jobs = urls.map(url => {
+            const id = addJob(url, {
+                url,
+                format: req.body.format,
+                quality: req.body.quality,
+                audioOnly: req.body.audioOnly,
+                audioFormat: req.body.audioFormat,
+                outputTemplate: req.body.outputTemplate,
+                options: req.body.options,
+                title: title || url
+            });
+            return { jobId: id, url };
+        });
+        res.status(201).json({ jobs, count: jobs.length });
+    } catch (error) {
+        console.error('Batch queue error:', error);
+        res.status(500).json({ error: 'Failed to queue batch downloads' });
+    }
+});
+
 app.get('/api/download/queue', (req, res) => {
     try {
         const jobs = getJobs();
@@ -389,16 +414,6 @@ app.delete('/api/download/queue/:id', (req, res) => {
     } catch (error) {
         console.error('Queue cancel error:', error);
         res.status(500).json({ error: 'Failed to cancel job' });
-    }
-});
-
-app.post('/api/channels/check-all', async (req, res) => {
-    try {
-        const results = await scrapeAllChannels();
-        res.json({ results });
-    } catch (error) {
-        console.error('Check all channels error:', error);
-        res.status(500).json({ error: 'Failed to check channels' });
     }
 });
 
@@ -449,7 +464,7 @@ app.delete('/api/channels/:id', (req, res) => {
 
 app.put('/api/channels/:id', (req, res) => {
     try {
-        const allowedFields = ['name', 'avatar', 'scrapeTypes', 'downloadOptions', 'autoDownload'];
+        const allowedFields = ['name', 'avatar'];
         const data = {};
         for (const key of allowedFields) {
             if (key in req.body) {

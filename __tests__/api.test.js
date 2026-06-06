@@ -56,13 +56,11 @@ jest.unstable_mockModule('../src/channel-manager.js', () => {
   const mockSubscribe = jest.fn(() => Promise.resolve({ id: 'channel-1', url: 'https://youtube.com/@test', name: 'Test Channel' }));
   const mockUnsubscribe = jest.fn((id) => id === 'channel-1');
   const mockGetSubscriptions = jest.fn(() => [
-    { id: 'channel-1', url: 'https://youtube.com/@test', name: 'Test Channel', scrapeTypes: ['videos'], autoDownload: false, createdAt: Date.now() }
+    { id: 'channel-1', url: 'https://youtube.com/@test', name: 'Test Channel', createdAt: Date.now() }
   ]);
   const mockGetChannel = jest.fn((id) => id === 'channel-1' ? { id: 'channel-1', name: 'Test Channel' } : null);
   const mockUpdateChannel = jest.fn((id) => id === 'channel-1' ? { id: 'channel-1', name: 'Updated' } : null);
-  const mockScrapeChannelVideos = jest.fn(() => Promise.resolve({ videos: [{ id: 'vid-1', title: 'Test Video', url: 'https://youtube.com/watch?v=test' }] }));
-  const mockCheckForNewVideos = jest.fn(() => Promise.resolve({ hasNew: true, channelName: 'Test Channel', newVideos: [{ id: 'new-1' }] }));
-  const mockScrapeAllChannels = jest.fn(() => Promise.resolve([{ channelName: 'Test Channel', hasNew: false }]));
+  const mockScrapeChannelVideos = jest.fn(() => Promise.resolve([{ id: 'vid-1', title: 'Test Video', url: 'https://youtube.com/watch?v=test', type: 'video' }]));
 
   return {
     subscribe: mockSubscribe,
@@ -71,8 +69,6 @@ jest.unstable_mockModule('../src/channel-manager.js', () => {
     getChannel: mockGetChannel,
     updateChannel: mockUpdateChannel,
     scrapeChannelVideos: mockScrapeChannelVideos,
-    checkForNewVideos: mockCheckForNewVideos,
-    scrapeAllChannels: mockScrapeAllChannels,
   };
 });
 
@@ -116,11 +112,10 @@ beforeEach(() => {
   channelManager.updateChannel.mockImplementation((id) => id === 'channel-1' ? { id: 'channel-1', name: 'Updated' } : null);
   channelManager.subscribe.mockResolvedValue({ id: 'channel-1', url: 'https://youtube.com/@test', name: 'Test Channel' });
   channelManager.getSubscriptions.mockReturnValue([
-    { id: 'channel-1', url: 'https://youtube.com/@test', name: 'Test Channel', scrapeTypes: ['videos'], autoDownload: false, createdAt: Date.now() }
+    { id: 'channel-1', url: 'https://youtube.com/@test', name: 'Test Channel', createdAt: Date.now() }
   ]);
   channelManager.getChannel.mockImplementation((id) => id === 'channel-1' ? { id: 'channel-1', name: 'Test Channel' } : null);
-  channelManager.scrapeChannelVideos.mockResolvedValue({ videos: [{ id: 'vid-1', title: 'Test Video', url: 'https://youtube.com/watch?v=test' }] });
-  channelManager.scrapeAllChannels.mockResolvedValue([{ channelName: 'Test Channel', hasNew: false }]);
+  channelManager.scrapeChannelVideos.mockResolvedValue([{ id: 'vid-1', title: 'Test Video', url: 'https://youtube.com/watch?v=test', type: 'video' }]);
 
   binaryManager.getLatestYtdlpVersion.mockResolvedValue('2026.03.17');
   binaryManager.getLatestFfmpegVersion.mockResolvedValue('7.0.2');
@@ -289,6 +284,38 @@ describe('API Endpoints', () => {
     });
   });
 
+  describe('POST /api/download/queue/batch', () => {
+    it('returns 400 if no urls provided', async () => {
+      const res = await request(app)
+        .post('/api/download/queue/batch')
+        .send({})
+        .expect(400);
+      expect(res.body).toEqual({ error: 'URLs array is required' });
+    });
+
+    it('returns 400 if urls is empty array', async () => {
+      const res = await request(app)
+        .post('/api/download/queue/batch')
+        .send({ urls: [] })
+        .expect(400);
+      expect(res.body).toEqual({ error: 'URLs array is required' });
+    });
+
+    it('returns 201 with jobs and count', async () => {
+      const res = await request(app)
+        .post('/api/download/queue/batch')
+        .send({ urls: ['https://example.com/video1', 'https://example.com/video2'], title: 'Batch' })
+        .expect(201);
+      expect(res.body).toHaveProperty('jobs');
+      expect(Array.isArray(res.body.jobs)).toBe(true);
+      expect(res.body.jobs).toHaveLength(2);
+      expect(res.body).toHaveProperty('count', 2);
+      expect(res.body.jobs[0]).toHaveProperty('jobId');
+      expect(res.body.jobs[0]).toHaveProperty('url');
+      expect(downloadQueue.addJob).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('GET /api/channels', () => {
     it('returns 200 with channels array', async () => {
       const res = await request(app).get('/api/channels').expect(200);
@@ -362,13 +389,15 @@ describe('API Endpoints', () => {
   });
 
   describe('POST /api/channels/:id/scrape', () => {
-    it('returns 200 with scraped videos', async () => {
+    it('returns 200 with scraped videos array', async () => {
       const res = await request(app)
         .post('/api/channels/channel-1/scrape')
-        .send({ types: ['videos'] })
+        .send({})
         .expect(200);
       expect(res.body).toHaveProperty('results');
-      expect(res.body.results).toHaveProperty('videos');
+      expect(Array.isArray(res.body.results)).toBe(true);
+      expect(res.body.results[0]).toHaveProperty('id');
+      expect(res.body.results[0]).toHaveProperty('title');
     });
 
     it('returns 500 when channel not found', async () => {
@@ -376,19 +405,9 @@ describe('API Endpoints', () => {
 
       const res = await request(app)
         .post('/api/channels/nonexistent/scrape')
-        .send({ types: ['videos'] })
+        .send({})
         .expect(500);
       expect(res.body).toHaveProperty('error');
-    });
-  });
-
-  describe('POST /api/channels/check-all', () => {
-    it('returns 200 with results array', async () => {
-      const res = await request(app)
-        .post('/api/channels/check-all')
-        .expect(200);
-      expect(res.body).toHaveProperty('results');
-      expect(Array.isArray(res.body.results)).toBe(true);
     });
   });
 

@@ -68,6 +68,44 @@
         #formatModal.show #formatModalContent {
             transform: scale(1);
         }
+
+        /* Custom Tooltip System */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+        #global-tooltip {
+            position: fixed;
+            z-index: 9999;
+            padding: 10px 14px;
+            background: #1f2937;
+            color: #f3f4f6;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3), 0 4px 10px -5px rgba(0,0,0,0.2);
+            pointer-events: none;
+            max-width: 320px;
+            opacity: 0;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            transform: translateY(4px);
+            font-family: system-ui, -apple-system, sans-serif;
+            white-space: pre-line;
+        }
+        #global-tooltip.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        #global-tooltip .tooltip-title {
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+            color: #fff;
+        }
+        #global-tooltip .tooltip-desc {
+            color: #d1d5db;
+            font-size: 0.75rem;
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
@@ -294,12 +332,9 @@
                     <i class="fa-solid fa-users mr-2"></i>Subscribed Channels
                 </h2>
                 <div class="flex flex-col sm:flex-row gap-3 mb-6">
-                    <input type="text" id="channelUrlInput" placeholder="Enter channel URL to subscribe" class="flex-1 min-w-0 block w-full px-4 py-2.5 rounded-md border-gray-300 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm shadow-sm border" />
+                    <input type="text" id="channelUrlInput" placeholder="Paste a channel URL like youtube.com/@ChannelName" class="flex-1 min-w-0 block w-full px-4 py-2.5 rounded-md border-gray-300 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm shadow-sm border" />
                     <button id="btnSubscribe" class="inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors whitespace-nowrap">
                         <i class="fa-solid fa-plus mr-1.5"></i>Subscribe
-                    </button>
-                    <button id="btnCheckAllChannels" class="inline-flex justify-center items-center px-5 py-2.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm whitespace-nowrap">
-                        <i class="fa-solid fa-arrows-rotate mr-1.5"></i>Check All for New Videos
                     </button>
                 </div>
                 <div id="channelsLoading" class="hidden flex-col items-center justify-center py-8">
@@ -311,15 +346,20 @@
                     <p class="text-gray-500">No channels subscribed yet</p>
                     <p class="text-gray-400 text-sm mt-1">Enter a channel URL above to get started.</p>
                 </div>
-                <div id="channelsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+                <div id="channelsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
             </section>
 
-            <!-- Scraped Results -->
+            <!-- Browse Results -->
             <section id="channelResultsSection" class="hidden bg-white shadow rounded-lg p-6">
-                <h2 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2">
-                    <i class="fa-solid fa-video mr-2"></i>Scraped Videos
-                </h2>
-                <div id="channelResultsGrid" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+                <div class="flex items-center justify-between mb-4 border-b pb-2">
+                    <h2 class="text-lg font-medium text-gray-900">
+                        <i class="fa-solid fa-video mr-2"></i><span id="channelResultsTitle">Channel Videos</span>
+                    </h2>
+                    <button id="btnDownloadSelected" class="inline-flex justify-center items-center px-5 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-download mr-1.5"></i>Download Selected (<span id="selectedCount">0</span>)
+                    </button>
+                </div>
+                <div id="channelResultsGrid" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
             </section>
         </main>
     </div>
@@ -425,5 +465,6 @@
     </footer>
 
     <script src="app.js"></script>
+    <div id="global-tooltip"></div>
 </body>
 </html>

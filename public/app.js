@@ -29,7 +29,70 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
-    // --- Toast System ---
+    // ======================== CUSTOM TOOLTIP SYSTEM ========================
+
+    const tooltipEl = document.getElementById('global-tooltip');
+    if (!tooltipEl) {
+        const t = document.createElement('div');
+        t.id = 'global-tooltip';
+        document.body.appendChild(t);
+    }
+
+    const activeTooltips = new Map();
+
+    function initTooltip(element, title, description) {
+        if (!element) return;
+        element.dataset.tooltip = (title || '') + '||' + (description || '');
+        if (element._tooltipInitted) return;
+        element._tooltipInitted = true;
+        element.addEventListener('mouseenter', (e) => {
+            const tooltip = document.getElementById('global-tooltip');
+            const [t, d] = element.dataset.tooltip.split('||');
+            if (t) {
+                tooltip.innerHTML = `<div class="tooltip-title">${escapeHtml(t)}</div><div class="tooltip-desc">${escapeHtml(d)}</div>`;
+            } else {
+                tooltip.innerHTML = `<div class="tooltip-desc">${escapeHtml(d)}</div>`;
+            }
+            positionTooltip(tooltip, e);
+            tooltip.classList.add('show');
+        });
+        element.addEventListener('mousemove', (e) => {
+            const tooltip = document.getElementById('global-tooltip');
+            positionTooltip(tooltip, e);
+        });
+        element.addEventListener('mouseleave', () => {
+            const tooltip = document.getElementById('global-tooltip');
+            tooltip.classList.remove('show');
+        });
+    }
+
+    function positionTooltip(tooltip, e) {
+        const padding = 12;
+        let x = e.clientX + padding;
+        let y = e.clientY + padding;
+        const rect = tooltip.getBoundingClientRect();
+        if (x + rect.width > window.innerWidth - 10) {
+            x = e.clientX - rect.width - padding;
+        }
+        if (y + rect.height > window.innerHeight - 10) {
+            y = e.clientY - rect.height - padding;
+        }
+        tooltip.style.left = Math.max(5, x) + 'px';
+        tooltip.style.top = Math.max(5, y) + 'px';
+    }
+
+    // Helper to auto-init all [data-tooltip] elements in the DOM
+    function initDataTooltips() {
+        document.querySelectorAll('[data-tooltip]').forEach(el => {
+            if (!el._tooltipInitted) {
+                const val = el.dataset.tooltip;
+                initTooltip(el, '', val);
+            }
+        });
+    }
+
+    // ======================== TOAST SYSTEM ========================
+
     let toastContainer = document.getElementById('toastContainer');
     if (!toastContainer) {
         toastContainer = document.createElement('div');
@@ -139,6 +202,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let queueEventSource = null;
     let queuePollInterval = null;
 
+    // Tooltips for tab buttons
+    const tabTooltips = {
+        download: 'Search, preview, and download videos one at a time.',
+        setup: 'Install or update yt-dlp and ffmpeg, the engines that power downloads.',
+        downloads: 'Browse files you\'ve already downloaded.',
+        channels: 'Save your favorite channels to browse their videos anytime. Pick what you want and batch-download.',
+        queue: 'See what\'s downloading, how it\'s progressing, and manage multiple downloads running at once.',
+        options: 'Fine-tune how yt-dlp works with advanced settings for power users.',
+    };
+    tabBtns.forEach(btn => {
+        const tab = btn.dataset.tab;
+        if (tab && tabTooltips[tab]) {
+            initTooltip(btn, '', tabTooltips[tab]);
+        }
+    });
+
     const updateTabBadge = (tabId, count) => {
         const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
         if (!btn) return;
@@ -201,8 +280,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const formatSelect = document.getElementById('formatSelect');
     const audioOnlyToggle = document.getElementById('audioOnlyToggle');
 
+    // Tooltips for Download tab elements
+    initTooltip(urlInput, '', 'Paste any YouTube link here \u2014 a single video, a whole playlist, or a channel. Works with most sites yt-dlp supports.');
+    initTooltip(btnMetadata, '', 'Look up info about a single video: title, thumbnail, duration, uploader. Useful to preview before downloading.');
+    initTooltip(btnScrape, '', 'List every video in a playlist or channel so you can pick which ones to download.');
+    initTooltip(qualitySelect, '', 'Pick your preferred video sharpness. \u201cBest\u201d grabs the highest quality, \u201c1080p\u201d is Full HD, \u201c720p\u201d is standard HD, \u201c480p\u201d is DVD quality \u2014 smaller file, faster download.');
+    initTooltip(formatSelect, '', 'Video packaging. MP4 works on everything \u2014 phones, TVs, computers. WebM is Google\u2019s format, often smaller file size.');
+    initTooltip(audioOnlyToggle, '', 'Check this to download just the sound \u2014 perfect for music, podcasts, or saving data.');
+
     // Wire up existing format list button
     const btnListFormats = document.getElementById('btnFormatList');
+    initTooltip(btnListFormats, '', 'See every format available for this video \u2014 different resolutions, codecs, and file sizes.');
     if (btnListFormats) {
         btnListFormats.addEventListener('click', async () => {
                 const url = urlInput.value.trim();
@@ -295,6 +383,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const audioFormatSelect = document.getElementById('audioFormatSelect');
     const outputTemplateInput = document.getElementById('outputTemplateInput');
 
+    initTooltip(audioFormatSelect, '', 'Choose MP3 for music, FLAC for CD-quality audio, Opus for smallest file size.');
+    initTooltip(outputTemplateInput, '', 'Customize the filename pattern. Leave blank to use the video title as filename.');
+
     audioOnlyToggle.addEventListener('change', (e) => {
         if (e.target.checked) {
             qualitySelect.disabled = true;
@@ -333,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-opacity duration-200"></div>
             </div>
             <div class="p-4 flex-1 flex flex-col">
-                <h3 class="text-sm font-semibold text-gray-900 mb-1 line-clamp-2" title="${title}">${title}</h3>
+                <h3 class="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">${title}</h3>
                 <p class="text-xs text-gray-500 mb-1 flex items-center">
                     <i class="fa-solid fa-user-circle mr-1"></i>${channel}
                 </p>
@@ -348,6 +439,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
+
+        // Tooltip on the title (shows full title when truncated)
+        const titleEl = card.querySelector('h3');
+        initTooltip(titleEl, '', title);
 
         const downloadBtn = card.querySelector('.download-btn');
         downloadBtn.addEventListener('click', () => handleQueueDownload(url, title, downloadBtn));
@@ -478,6 +573,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const ytdlpPercent = document.getElementById('ytdlpPercent');
     const ffmpegPercent = document.getElementById('ffmpegPercent');
 
+    initTooltip(btnSetupDownload, '', 'Downloads both yt-dlp (the downloader engine) and ffmpeg (for processing audio/video). Runs them at the same time to save you waiting.');
+    initTooltip(setupComplete, '', 'Everything is installed and ready to go.');
+
     let isSetupRunning = false;
 
     // Inject setup status area
@@ -500,6 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
             checkUpdatesBtn.id = 'btnCheckUpdates';
             checkUpdatesBtn.className = 'inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ml-3';
             checkUpdatesBtn.innerHTML = '<i class="fa-solid fa-rotate mr-2"></i>Check for Updates';
+            initTooltip(checkUpdatesBtn, '', 'Check if newer versions of yt-dlp or ffmpeg are available. If so, you can re-download them.');
             btnSetupDownload.parentElement.appendChild(checkUpdatesBtn);
 
             checkUpdatesBtn.addEventListener('click', async () => {
@@ -634,6 +733,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const filesTableWrapper = document.getElementById('filesTableWrapper');
     const filesBody = document.getElementById('filesBody');
 
+    initTooltip(filesEmpty, '', 'Your download folder is empty. Downloaded files will show up here after you queue them.');
+
     const loadFiles = async () => {
         if (filesLoading) filesLoading.classList.remove('hidden');
         if (filesEmpty) filesEmpty.classList.add('hidden');
@@ -700,6 +801,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const channelLoading = document.getElementById('channelsLoading');
         const channelEmpty = document.getElementById('channelsEmpty');
         const channelResultsWrapper = document.getElementById('channelResultsSection');
+
+        initTooltip(channelUrlInput, '', 'Paste a channel URL (like youtube.com/@ChannelName) to save it to your list for quick browsing later.');
+        initTooltip(btnSubscribe, '', 'Add this channel to your saved list so you can browse all their videos anytime.');
+        initTooltip(btnCheckAllChannels, '', 'Check every subscribed channel for any new videos that have been posted since you last checked.');
 
         btnSubscribe.addEventListener('click', async () => {
             const url = channelUrlInput.value.trim();
@@ -806,7 +911,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex items-start gap-4">
                         <img class="w-16 h-16 rounded-full object-cover border-2 border-gray-200 flex-shrink-0" src="${avatar}" alt="Avatar" onerror="this.src='https://via.placeholder.com/80x80.png?text=Channel'">
                         <div class="flex-1 min-w-0">
-                            <h3 class="text-base font-semibold text-gray-900 truncate" title="${name}">${name}</h3>
+                            <h3 class="text-base font-semibold text-gray-900 truncate">${name}</h3>
                             <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
                                 ${subs ? `<span><i class="fa-solid fa-users mr-1"></i>${subs >= 1000000 ? (subs / 1000000).toFixed(1) + 'M' : subs >= 1000 ? (subs / 1000).toFixed(1) + 'K' : subs}</span>` : ''}
                                 ${videos ? `<span><i class="fa-solid fa-video mr-1"></i>${videos} videos</span>` : ''}
@@ -857,13 +962,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
+            // Tooltip on channel name (shows full name when truncated)
+            const nameEl = card.querySelector('h3');
+            initTooltip(nameEl, '', name);
+
+            // Tooltip on the channel card itself
+            initTooltip(card, '', 'Click the channel card to browse its videos, shorts, and streams. Pick what you want and download in batch.');
+
+            // Tooltips on scrape buttons
+            const videosBtn = card.querySelector('.btn-scrape-videos');
+            const shortsBtn = card.querySelector('.btn-scrape-shorts');
+            const streamsBtn = card.querySelector('.btn-scrape-streams');
+            initTooltip(videosBtn, '', 'Pull up all regular videos from this channel so you can pick and choose which ones to download.');
+            initTooltip(shortsBtn, '', 'Browse short-form videos (Shorts) from this channel. Pick the ones you want and download them.');
+            initTooltip(streamsBtn, '', 'Browse live streams and past streams from this channel. Pick and download your favorites.');
+
+            // Tooltip on unsubscribe
+            const unsubBtn = card.querySelector('.btn-unsubscribe');
+            initTooltip(unsubBtn, '', 'Remove this channel from your saved list.');
+
+            // Tooltip on settings toggle
+            const settingsBtn = card.querySelector('.btn-toggle-settings');
+            initTooltip(settingsBtn, '', 'Adjust channel-specific settings like auto-downloading new videos automatically.');
+
             // Scrape Videos
-            card.querySelector('.btn-scrape-videos')?.addEventListener('click', () => scrapeChannel(id, ['videos']));
-            card.querySelector('.btn-scrape-shorts')?.addEventListener('click', () => scrapeChannel(id, ['shorts']));
-            card.querySelector('.btn-scrape-streams')?.addEventListener('click', () => scrapeChannel(id, ['streams']));
+            videosBtn?.addEventListener('click', () => scrapeChannel(id, ['videos']));
+            shortsBtn?.addEventListener('click', () => scrapeChannel(id, ['shorts']));
+            streamsBtn?.addEventListener('click', () => scrapeChannel(id, ['streams']));
 
             // Unsubscribe
-            card.querySelector('.btn-unsubscribe')?.addEventListener('click', async () => {
+            unsubBtn?.addEventListener('click', async () => {
                 if (!confirm(`Unsubscribe from "${name}"?`)) return;
                 try {
                     const response = await fetch(`/api/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -877,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             // Toggle settings
-            card.querySelector('.btn-toggle-settings')?.addEventListener('click', (e) => {
+            settingsBtn?.addEventListener('click', (e) => {
                 const settings = card.querySelector('.channel-settings');
                 const icon = e.currentTarget.querySelector('.fa-chevron-down');
                 if (settings) {
@@ -979,8 +1107,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const queueEmpty = document.getElementById('queueEmpty');
         const queueTableWrapper = document.getElementById('queueTableWrapper');
 
+        initTooltip(concurrencyInput, '', 'How many downloads to run at the same time. 1 = one at a time, 5 = five at once. Higher numbers use more internet bandwidth but finish faster.');
+        initTooltip(btnCancelAll, '', 'Remove every download from the queue. Downloads that are already in progress will be stopped too.');
+        initTooltip(queueEmpty, '', 'No downloads queued yet. Go to the Download or Channels tab to start some.');
+
         // Filter buttons
         document.querySelectorAll('.queue-filter-btn').forEach(btn => {
+            initTooltip(btn, '', 'Show only downloads with this status. \u201cAll\u201d shows everything.');
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.queue-filter-btn').forEach(b => {
                     b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
@@ -1090,7 +1223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const escapedId = escapeHtml(id);
 
                 tr.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 max-w-xs truncate" title="${title}">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 max-w-xs truncate">
                         ${title}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
@@ -1109,9 +1242,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         ${(status === 'queued' || status === 'downloading') ? `<button class="btn-cancel-job px-3 py-1.5 text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors" data-job-id="${escapedId}"><i class="fa-solid fa-ban mr-1"></i>Cancel</button>` : ''}
                         ${status === 'completed' ? `<span class="text-xs text-green-600"><i class="fa-solid fa-check-circle mr-1"></i>Done</span>` : ''}
-                        ${status === 'failed' ? `<span class="text-xs text-red-500" title="${escapeHtml(job.error || '')}"><i class="fa-solid fa-circle-exclamation mr-1"></i>Failed</span>` : ''}
+                        ${status === 'failed' ? `<span class="text-xs text-red-500"><i class="fa-solid fa-circle-exclamation mr-1"></i>Failed</span>` : ''}
                     </td>
                 `;
+
+                // Tooltip on the title (shows full title when truncated)
+                const titleTd = tr.querySelector('td:first-child');
+                initTooltip(titleTd, '', title);
+
+                // Tooltip on failed error span
+                const errSpan = tr.querySelector('.text-red-500');
+                if (errSpan && job.error) {
+                    initTooltip(errSpan, '', job.error);
+                }
 
                 const cancelBtn = tr.querySelector('.btn-cancel-job');
                 if (cancelBtn) {
@@ -1201,6 +1344,9 @@ document.addEventListener('DOMContentLoaded', () => {
         optionsForm = document.getElementById('optionsContainer');
         const btnApplyOptions = document.getElementById('btnSaveOptions');
         const btnResetOptions = document.getElementById('btnResetOptions');
+
+        initTooltip(btnApplyOptions, '', 'Save these settings so every new download uses them automatically.');
+        initTooltip(btnResetOptions, '', 'Undo all your changes and go back to yt-dlp\u2019s original default settings.');
 
         const categoryLabels = {
             general: 'General',
@@ -1293,9 +1439,9 @@ document.addEventListener('DOMContentLoaded', () => {
             label.className = 'block text-sm font-medium text-gray-700';
             label.textContent = opt.label || opt.flag;
             if (opt.description) {
-                label.title = opt.description;
                 label.className += ' cursor-help';
                 label.innerHTML += ' <i class="fa-solid fa-circle-info text-gray-400 text-[10px]"></i>';
+                initTooltip(label, '', opt.description);
             }
             labelDiv.appendChild(label);
 
@@ -1437,6 +1583,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ======================== INIT ========================
+
+    // Auto-init any remaining [data-tooltip] elements from HTML
+    initDataTooltips();
 
     activateTab('download');
 

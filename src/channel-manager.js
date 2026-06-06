@@ -68,8 +68,6 @@ export async function subscribe(url) {
         avatar: channelInfo.thumbnails?.[0]?.url || undefined,
         subscriberCount: channelInfo.subscriber_count || 0,
         videoCount: channelInfo.playlist_count || channelInfo.channel_follower_count || 0,
-        scrapeTypes: ['videos'],
-        autoDownload: false,
         createdAt: Date.now(),
     };
 
@@ -97,7 +95,7 @@ export function getChannel(id) {
 export function updateChannel(id, data) {
     const channel = subscriptions.find(s => s.id === id);
     if (!channel) return null;
-    const allowed = ['name', 'avatar', 'scrapeTypes', 'downloadOptions', 'autoDownload', 'lastChecked', 'lastVideoDate'];
+    const allowed = ['name', 'avatar'];
     for (const key of allowed) {
         if (key in data) {
             channel[key] = data[key];
@@ -107,19 +105,16 @@ export function updateChannel(id, data) {
     return channel;
 }
 
-export async function scrapeChannelVideos(id, types) {
+export async function scrapeChannelVideos(id) {
     const channel = subscriptions.find(s => s.id === id);
     if (!channel) throw new Error('Channel not found');
 
-    const typeList = types || channel.scrapeTypes || ['videos'];
-    const results = {};
+    const types = ['videos', 'shorts', 'streams'];
+    const results = [];
 
-    for (const t of typeList) {
+    for (const t of types) {
         const baseUrl = channel.url.replace(/\/?(?:videos|shorts|streams|featured)?\/?$/, '');
-        let url;
-        if (t === 'shorts') url = baseUrl + '/shorts';
-        else if (t === 'streams') url = baseUrl + '/streams';
-        else url = baseUrl + '/videos';
+        const url = t === 'videos' ? baseUrl + '/videos' : t === 'shorts' ? baseUrl + '/shorts' : baseUrl + '/streams';
 
         try {
             const data = await ytDlp(url, {
@@ -133,82 +128,20 @@ export async function scrapeChannelVideos(id, types) {
                 ignoreErrors: true,
             });
 
-            const entries = data.entries || [];
-            results[t] = entries.map(e => ({
+            const entries = (data.entries || []).map(e => ({
                 id: e.id,
                 url: e.url || e.webpage_url,
                 title: e.title,
                 duration: e.duration,
                 uploaded: e.upload_date,
                 viewCount: e.view_count,
+                type: t === 'shorts' ? 'short' : t === 'streams' ? 'stream' : 'video',
             }));
+            results.push(...entries);
         } catch {
-            results[t] = [];
+            // type may not exist for this channel, skip silently
         }
     }
 
-    channel.lastChecked = new Date().toISOString();
-    save();
-    return results;
-}
-
-export async function checkForNewVideos(id) {
-    const channel = subscriptions.find(s => s.id === id);
-    if (!channel) throw new Error('Channel not found');
-
-    const data = await ytDlp(channel.url, {
-        dumpSingleJson: true,
-        flatPlaylist: true,
-        noWarnings: true,
-        noCallHome: true,
-        preferFreeFormats: true,
-        youtubeSkipDashManifest: true,
-        extractFlat: true,
-        ignoreErrors: true,
-        playlistEnd: 5,
-    });
-
-    const entries = data.entries || [];
-    const newestDate = entries.reduce((latest, e) => {
-        const d = e.upload_date && typeof e.upload_date === 'string'
-            ? parseInt(e.upload_date.replace(/-/g, ''), 10)
-            : (e.timestamp || 0);
-        return d > latest ? d : latest;
-    }, 0);
-
-    const lastDate = channel.lastVideoDate && typeof channel.lastVideoDate === 'string'
-        ? parseInt(channel.lastVideoDate.replace(/-/g, ''), 10)
-        : (typeof channel.lastVideoDate === 'number' ? channel.lastVideoDate : 0);
-
-    const hasNew = newestDate > 0 && newestDate > lastDate;
-
-    channel.lastChecked = new Date().toISOString();
-    if (newestDate) channel.lastVideoDate = newestDate;
-    save();
-
-    return {
-        hasNew,
-        channelName: channel.name,
-        newestVideoDate: newestDate || null,
-        newVideos: hasNew ? entries : [],
-    };
-}
-
-export async function scrapeAllChannels() {
-    const results = [];
-    for (const channel of subscriptions) {
-        try {
-            const result = await checkForNewVideos(channel.id);
-            results.push(result);
-        } catch {
-            results.push({
-                channelName: channel.name,
-                hasNew: false,
-                newestVideoDate: null,
-                newVideos: [],
-                error: true,
-            });
-        }
-    }
     return results;
 }
