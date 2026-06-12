@@ -103,26 +103,57 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const showToast = (message, type = 'info') => {
         const colors = {
-            success: 'bg-green-50 border-green-200 text-green-800',
-            error: 'bg-red-50 border-red-200 text-red-800',
-            info: 'bg-blue-50 border-blue-200 text-blue-800',
+            success: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300',
+            error: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/30 dark:border-red-700 dark:text-red-300',
+            info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300',
         };
         const icons = {
             success: '<i class="fa-solid fa-circle-check text-green-400 text-lg"></i>',
             error: '<i class="fa-solid fa-circle-xmark text-red-400 text-lg"></i>',
             info: '<i class="fa-solid fa-circle-info text-blue-400 text-lg"></i>',
         };
+        const progressColors = {
+            success: 'bg-green-400',
+            error: 'bg-red-400',
+            info: 'bg-blue-400',
+        };
         const toast = document.createElement('div');
         toast.className = `pointer-events-auto rounded-lg border p-4 shadow-lg transition-all duration-300 ${colors[type] || colors.info}`;
-        toast.innerHTML = `<div class="flex items-start gap-3"><div class="flex-shrink-0 mt-0.5">${icons[type] || icons.info}</div><div class="flex-1 text-sm font-medium">${message}</div><button class="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600" onclick="this.parentElement.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button></div>`;
-        toastContainer.appendChild(toast);
+        toast.innerHTML = `<div class="flex items-start gap-3"><div class="flex-shrink-0 mt-0.5">${icons[type] || icons.info}</div><div class="flex-1 text-sm font-medium">${message}</div><button class="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600" onclick="this.parentElement.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button></div><div class="mt-2 w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1 overflow-hidden"><div class="toast-progress h-full rounded-full ${progressColors[type] || progressColors.info} transition-all duration-300 ease-linear" style="width:100%"></div></div>`;
+
+        // Stagger: animate in with slight delay per toast
+        const toasts = toastContainer.querySelectorAll(':scope > div');
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(20px)';
+        const staggerDelay = Math.min(toasts.length * 50, 300);
         setTimeout(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateX(0)';
+        }, 50 + staggerDelay);
+
+        toastContainer.appendChild(toast);
+
+        // Countdown progress bar
+        const duration = 5000;
+        const startTime = Date.now();
+        const progressEl = toast.querySelector('.toast-progress');
+        const interval = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            const remaining = Math.max(0, 1 - elapsed / duration);
+            if (progressEl) progressEl.style.width = (remaining * 100) + '%';
+            if (elapsed >= duration) {
+                clearInterval(interval);
+            }
+        }, 50);
+
+        setTimeout(() => {
+            clearInterval(interval);
             if (toast.parentElement) {
                 toast.style.opacity = '0';
                 toast.style.transform = 'translateX(100%)';
                 setTimeout(() => toast.remove(), 300);
             }
-        }, 5000);
+        }, duration);
     };
 
     // --- Modal System ---
@@ -163,6 +194,32 @@ document.addEventListener('DOMContentLoaded', () => {
             loadingIndicator.classList.add('hidden');
             loadingIndicator.classList.remove('flex');
         }
+    };
+
+    const showSkeleton = (type = 'grid') => {
+        showLoading('Loading...');
+        const rg = document.getElementById('resultsGrid');
+        if (!rg) return;
+        rg.innerHTML = '';
+        const count = type === 'video' ? 1 : 8;
+        for (let i = 0; i < count; i++) {
+            const skeleton = document.createElement('div');
+            skeleton.className = 'animate-pulse bg-white dark:bg-gray-800 rounded-xl overflow-hidden';
+            skeleton.innerHTML = `
+                <div class="aspect-video bg-gray-200 dark:bg-gray-700"></div>
+                <div class="p-4 space-y-3">
+                    <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                    <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                    <div class="h-9 bg-gray-200 dark:bg-gray-700 rounded mt-4"></div>
+                </div>
+            `;
+            rg.appendChild(skeleton);
+        }
+    };
+
+    const hideSkeleton = () => {
+        const rg = document.getElementById('resultsGrid');
+        if (rg) rg.innerHTML = '';
     };
 
     const showError = (message) => {
@@ -467,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
             options: Object.keys(currentOptions).length > 0 ? currentOptions : undefined,
         };
 
+        let success = false;
         try {
             const response = await fetch('/api/download/queue', {
                 method: 'POST',
@@ -481,15 +539,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const job = await response.json();
+            success = true;
             showToast(`<span>Download queued! <a href="#" class="font-semibold underline" onclick="event.preventDefault(); activateTab('queue')">View Queue</a></span>`, 'success');
             updateTabBadge('queue', (parseInt(document.querySelector('.tab-btn[data-tab="queue"] .tab-badge')?.textContent || '0')) + 1);
         } catch (error) {
             console.error('Queue error:', error);
             showToast(`Failed to queue: ${escapeHtml(error.message)}`, 'error');
         } finally {
-            buttonEl.innerHTML = originalText;
-            buttonEl.disabled = false;
-            buttonEl.classList.remove('opacity-75', 'cursor-not-allowed');
+            if (success) {
+                buttonEl.innerHTML = '<i class="fa-solid fa-check text-green-400 mr-2"></i>Queued';
+                buttonEl.disabled = false;
+                buttonEl.classList.remove('opacity-75', 'cursor-not-allowed');
+                setTimeout(() => {
+                    buttonEl.innerHTML = originalText;
+                }, 3000);
+            } else {
+                buttonEl.innerHTML = originalText;
+                buttonEl.disabled = false;
+                buttonEl.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
         }
     };
 
@@ -497,7 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = urlInput.value.trim();
         if (!url) return showError('Please enter a valid URL');
 
-        showLoading('Fetching metadata...');
+        showSkeleton('video');
         try {
             const response = await fetch(`/api/metadata?url=${encodeURIComponent(url)}`);
             const data = await response.json();
@@ -521,7 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = urlInput.value.trim();
         if (!url) return showError('Please enter a valid URL');
 
-        showLoading('Scraping channel/playlist (this may take a while depending on size)...');
+        showSkeleton('grid');
         try {
             const response = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`);
             const data = await response.json();
@@ -673,8 +741,8 @@ document.addEventListener('DOMContentLoaded', () => {
         btnSetupDownload.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Downloading...';
         if (setupComplete) setupComplete.classList.add('hidden');
         if (setupProgress) setupProgress.classList.remove('hidden');
-        if (ytdlpBar) ytdlpBar.style.width = '0%';
-        if (ffmpegBar) ffmpegBar.style.width = '0%';
+        if (ytdlpBar) { ytdlpBar.style.width = '0%'; ytdlpBar.classList.add('progress-bar-animated'); }
+        if (ffmpegBar) { ffmpegBar.style.width = '0%'; ffmpegBar.classList.add('progress-bar-animated'); }
         if (ytdlpStatus) ytdlpStatus.textContent = 'Starting...';
         if (ffmpegStatus) ffmpegStatus.textContent = 'Starting...';
         if (ytdlpPercent) ytdlpPercent.textContent = '0%';
@@ -797,14 +865,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const channelUrlInput = document.getElementById('channelUrlInput');
         const btnSubscribe = document.getElementById('btnSubscribe');
-        const btnCheckAllChannels = document.getElementById('btnCheckAllChannels');
         const channelLoading = document.getElementById('channelsLoading');
         const channelEmpty = document.getElementById('channelsEmpty');
         const channelResultsWrapper = document.getElementById('channelResultsSection');
+        const btnDownloadSelected = document.getElementById('btnDownloadSelected');
+
+        let selectedVideos = new Set();
+        let browseChannelName = '';
+
+        function updateDownloadButton() {
+            const count = selectedVideos.size;
+            const countEl = document.getElementById('selectedCount');
+            if (countEl) countEl.textContent = count;
+            if (btnDownloadSelected) {
+                btnDownloadSelected.disabled = count === 0;
+                btnDownloadSelected.innerHTML = count > 0
+                    ? '<i class="fa-solid fa-download mr-1.5"></i>Download Selected (' + count + ')'
+                    : '<i class="fa-solid fa-download mr-1.5"></i>Download Selected (0)';
+            }
+        }
 
         initTooltip(channelUrlInput, '', 'Paste a channel URL (like youtube.com/@ChannelName) to save it to your list for quick browsing later.');
         initTooltip(btnSubscribe, '', 'Add this channel to your saved list so you can browse all their videos anytime.');
-        initTooltip(btnCheckAllChannels, '', 'Check every subscribed channel for any new videos that have been posted since you last checked.');
+        initTooltip(btnDownloadSelected, '', 'Download all the videos you\u2019ve checked. They\u2019ll be added to the queue and downloaded in parallel.');
 
         btnSubscribe.addEventListener('click', async () => {
             const url = channelUrlInput.value.trim();
@@ -840,29 +923,45 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        btnCheckAllChannels.addEventListener('click', async () => {
+        btnDownloadSelected.addEventListener('click', async () => {
+            const urls = Array.from(selectedVideos);
+            if (urls.length === 0) return;
             try {
-                btnCheckAllChannels.disabled = true;
-                btnCheckAllChannels.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Checking...';
-                const response = await fetch('/api/channels/check-all', { method: 'POST' });
-                if (!response.ok) throw new Error('Failed to check channels');
+                btnDownloadSelected.disabled = true;
+                btnDownloadSelected.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Queuing...';
+                const response = await fetch('/api/download/queue/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls, title: browseChannelName })
+                });
+                if (!response.ok) {
+                    let errMsg = 'Failed to queue downloads';
+                    try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
+                    throw new Error(errMsg);
+                }
                 const result = await response.json();
-                showToast(`Checked all channels. ${result.newVideos || 0} new videos found.`, 'success');
-                await loadChannels();
+                showToast(result.count + ' download' + (result.count !== 1 ? 's' : '') + ' queued!', 'success');
+                selectedVideos.clear();
+                updateDownloadButton();
+                // Re-render to uncheck all boxes
+                document.querySelectorAll('#channelResultsGrid .video-checkbox').forEach(cb => cb.checked = false);
+                updateTabBadge('queue', result.count);
             } catch (error) {
                 showToast(error.message, 'error');
             } finally {
-                btnCheckAllChannels.disabled = false;
-                btnCheckAllChannels.innerHTML = '<i class="fa-solid fa-rotate mr-2"></i>Check All for New';
+                btnDownloadSelected.disabled = false;
+                updateDownloadButton();
             }
         });
 
         const loadChannels = async () => {
+            selectedVideos.clear();
+            updateDownloadButton();
+            if (channelResultsWrapper) channelResultsWrapper.classList.add('hidden');
+            if (channelResultsGrid) channelResultsGrid.innerHTML = '';
             if (channelLoading) channelLoading.classList.remove('hidden');
             if (channelEmpty) channelEmpty.classList.add('hidden');
             if (channelList) channelList.innerHTML = '';
-            if (channelResultsWrapper) channelResultsWrapper.classList.add('hidden');
-            if (channelResultsGrid) channelResultsGrid.innerHTML = '';
 
             try {
                 const response = await fetch('/api/channels');
@@ -896,13 +995,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const createChannelCard = (ch) => {
             const card = document.createElement('div');
             card.className = 'bg-white overflow-hidden shadow rounded-lg border border-gray-100 transition-transform hover:-translate-y-1 hover:shadow-lg duration-200';
-            card.id = `channel-card-${escapeHtml(ch.id || ch._id)}`;
+            card.id = 'channel-card-' + escapeHtml(ch.id || ch._id);
 
             const avatar = escapeHtml(ch.avatar || ch.thumbnail || ch.thumbnails?.high?.url || 'https://via.placeholder.com/80x80.png?text=Channel');
             const name = escapeHtml(ch.name || ch.title || ch.channel || 'Unknown Channel');
             const subs = ch.subscriber_count || ch.subscribers;
             const videos = ch.video_count || ch.videoCount;
-            const lastChecked = ch.last_checked || ch.lastChecked;
             const id = ch.id || ch._id;
             const escapedId = escapeHtml(id);
 
@@ -913,51 +1011,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="flex-1 min-w-0">
                             <h3 class="text-base font-semibold text-gray-900 truncate">${name}</h3>
                             <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                                ${subs ? `<span><i class="fa-solid fa-users mr-1"></i>${subs >= 1000000 ? (subs / 1000000).toFixed(1) + 'M' : subs >= 1000 ? (subs / 1000).toFixed(1) + 'K' : subs}</span>` : ''}
-                                ${videos ? `<span><i class="fa-solid fa-video mr-1"></i>${videos} videos</span>` : ''}
-                                ${lastChecked ? `<span><i class="fa-solid fa-clock mr-1"></i>${formatDate(lastChecked)}</span>` : ''}
+                                ${subs ? '<span><i class="fa-solid fa-users mr-1"></i>' + (subs >= 1000000 ? (subs / 1000000).toFixed(1) + 'M' : subs >= 1000 ? (subs / 1000).toFixed(1) + 'K' : subs) + '</span>' : ''}
+                                ${videos ? '<span><i class="fa-solid fa-video mr-1"></i>' + videos + ' videos</span>' : ''}
                             </div>
                         </div>
                     </div>
                     <div class="mt-4 flex flex-wrap gap-2">
-                        <button class="btn-scrape-videos px-3 py-1.5 text-xs font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 transition-colors" data-channel-id="${escapedId}">
-                            <i class="fa-solid fa-list mr-1"></i>Videos
+                        <button class="btn-browse px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors flex-1" data-channel-id="${escapedId}" data-channel-name="${name.replace(/"/g, '&quot;')}">
+                            <i class="fa-solid fa-magnifying-glass mr-1.5"></i>Browse
                         </button>
-                        <button class="btn-scrape-shorts px-3 py-1.5 text-xs font-medium rounded-md text-white bg-pink-600 hover:bg-pink-700 transition-colors" data-channel-id="${escapedId}">
-                            <i class="fa-solid fa-bolt mr-1"></i>Shorts
+                        <button class="btn-unsubscribe px-3 py-2 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors" data-channel-id="${escapedId}">
+                            <i class="fa-solid fa-trash mr-1"></i>
                         </button>
-                        <button class="btn-scrape-streams px-3 py-1.5 text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors" data-channel-id="${escapedId}">
-                            <i class="fa-solid fa-tower-broadcast mr-1"></i>Streams
-                        </button>
-                        <button class="btn-unsubscribe px-3 py-1.5 text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors ml-auto" data-channel-id="${escapedId}">
-                            <i class="fa-solid fa-trash mr-1"></i>Unsubscribe
-                        </button>
-                    </div>
-                    <div class="mt-3">
-                        <button class="btn-toggle-settings text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1" data-channel-id="${escapedId}">
-                            <i class="fa-solid fa-cog"></i> Settings <i class="fa-solid fa-chevron-down text-[10px]"></i>
-                        </button>
-                        <div class="channel-settings hidden mt-2 p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2" data-channel-id="${escapedId}">
-                            <label class="flex items-center gap-2 text-sm text-gray-700">
-                                <input type="checkbox" class="chk-autodownload h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" ${ch.autoDownload ? 'checked' : ''} data-channel-id="${escapedId}">
-                                Auto-download new videos
-                            </label>
-                            <div class="text-xs text-gray-500 font-medium">Scrape Types:</div>
-                            <div class="flex flex-wrap gap-3">
-                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
-                                    <input type="checkbox" class="chk-scrape-type h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" data-channel-id="${escapedId}" data-type="videos" ${(!ch.scrapeTypes || ch.scrapeTypes.includes('videos')) ? 'checked' : ''}>
-                                    Videos
-                                </label>
-                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
-                                    <input type="checkbox" class="chk-scrape-type h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" data-channel-id="${escapedId}" data-type="shorts" ${(ch.scrapeTypes && ch.scrapeTypes.includes('shorts')) ? 'checked' : ''}>
-                                    Shorts
-                                </label>
-                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
-                                    <input type="checkbox" class="chk-scrape-type h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" data-channel-id="${escapedId}" data-type="streams" ${(ch.scrapeTypes && ch.scrapeTypes.includes('streams')) ? 'checked' : ''}>
-                                    Streams
-                                </label>
-                            </div>
-                        </div>
                     </div>
                 </div>
             `;
@@ -966,35 +1031,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const nameEl = card.querySelector('h3');
             initTooltip(nameEl, '', name);
 
-            // Tooltip on the channel card itself
-            initTooltip(card, '', 'Click the channel card to browse its videos, shorts, and streams. Pick what you want and download in batch.');
-
-            // Tooltips on scrape buttons
-            const videosBtn = card.querySelector('.btn-scrape-videos');
-            const shortsBtn = card.querySelector('.btn-scrape-shorts');
-            const streamsBtn = card.querySelector('.btn-scrape-streams');
-            initTooltip(videosBtn, '', 'Pull up all regular videos from this channel so you can pick and choose which ones to download.');
-            initTooltip(shortsBtn, '', 'Browse short-form videos (Shorts) from this channel. Pick the ones you want and download them.');
-            initTooltip(streamsBtn, '', 'Browse live streams and past streams from this channel. Pick and download your favorites.');
-
-            // Tooltip on unsubscribe
-            const unsubBtn = card.querySelector('.btn-unsubscribe');
-            initTooltip(unsubBtn, '', 'Remove this channel from your saved list.');
-
-            // Tooltip on settings toggle
-            const settingsBtn = card.querySelector('.btn-toggle-settings');
-            initTooltip(settingsBtn, '', 'Adjust channel-specific settings like auto-downloading new videos automatically.');
-
-            // Scrape Videos
-            videosBtn?.addEventListener('click', () => scrapeChannel(id, ['videos']));
-            shortsBtn?.addEventListener('click', () => scrapeChannel(id, ['shorts']));
-            streamsBtn?.addEventListener('click', () => scrapeChannel(id, ['streams']));
+            // Browse button
+            const browseBtn = card.querySelector('.btn-browse');
+            initTooltip(browseBtn, '', 'Click to browse all videos, shorts, and streams from this channel. Pick what you want and download them in batch.');
+            browseBtn.addEventListener('click', () => browseChannel(id, name));
 
             // Unsubscribe
-            unsubBtn?.addEventListener('click', async () => {
-                if (!confirm(`Unsubscribe from "${name}"?`)) return;
+            const unsubBtn = card.querySelector('.btn-unsubscribe');
+            initTooltip(unsubBtn, '', 'Remove this channel from your saved list.');
+            unsubBtn.addEventListener('click', async () => {
+                if (!confirm('Unsubscribe from "' + name + '"?')) return;
                 try {
-                    const response = await fetch(`/api/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                    const response = await fetch('/api/channels/' + encodeURIComponent(id), { method: 'DELETE' });
                     if (!response.ok) throw new Error('Failed to unsubscribe');
                     showToast('Unsubscribed successfully', 'success');
                     card.remove();
@@ -1004,84 +1052,99 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            // Toggle settings
-            settingsBtn?.addEventListener('click', (e) => {
-                const settings = card.querySelector('.channel-settings');
-                const icon = e.currentTarget.querySelector('.fa-chevron-down');
-                if (settings) {
-                    settings.classList.toggle('hidden');
-                    if (icon) icon.style.transform = settings.classList.contains('hidden') ? '' : 'rotate(180deg)';
-                }
-            });
-
-            // Auto-download toggle
-            card.querySelector('.chk-autodownload')?.addEventListener('change', async (e) => {
-                try {
-                    await fetch(`/api/channels/${encodeURIComponent(id)}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ autoDownload: e.target.checked })
-                    });
-                } catch (error) {
-                    showToast('Failed to update settings', 'error');
-                }
-            });
-
-            // Scrape type checkboxes
-            card.querySelectorAll('.chk-scrape-type').forEach(cb => {
-                cb.addEventListener('change', async () => {
-                    const checkedTypes = [];
-                    card.querySelectorAll('.chk-scrape-type:checked').forEach(c => checkedTypes.push(c.dataset.type));
-                    try {
-                        await fetch(`/api/channels/${encodeURIComponent(id)}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ scrapeTypes: checkedTypes })
-                        });
-                    } catch (error) {
-                        showToast('Failed to update settings', 'error');
-                    }
-                });
-            });
-
             return card;
         };
 
-        const scrapeChannel = async (channelId, types) => {
-            const wrapper = document.getElementById('channelResultsWrapper');
+        const browseChannel = async (channelId, channelName) => {
+            selectedVideos.clear();
+            updateDownloadButton();
+            browseChannelName = channelName || '';
             const grid = document.getElementById('channelResultsGrid');
+            const wrapper = document.getElementById('channelResultsSection');
+            const titleEl = document.getElementById('channelResultsTitle');
             if (!grid) return;
             grid.innerHTML = '';
             if (wrapper) wrapper.classList.remove('hidden');
-            grid.innerHTML = '<div class="col-span-full text-center py-8"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Scraping...</p></div>';
+            if (titleEl) titleEl.textContent = escapeHtml(channelName) + ' — loading...';
+            grid.innerHTML = '<div class="col-span-full text-center py-8"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Fetching all videos...</p></div>';
 
             try {
-                const response = await fetch(`/api/channels/${encodeURIComponent(channelId)}/scrape`, {
+                const response = await fetch('/api/channels/' + encodeURIComponent(channelId) + '/scrape', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ types })
+                    body: '{}'
                 });
                 if (!response.ok) {
-                    let errMsg = 'Failed to scrape';
+                    let errMsg = 'Failed to browse channel';
                     try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
                     throw new Error(errMsg);
                 }
                 const data = await response.json();
-                const videos = data.videos || data.entries || data || [];
-                const videoArray = Array.isArray(videos) ? videos : [];
+                const videoArray = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+
                 grid.innerHTML = '';
                 if (videoArray.length === 0) {
                     grid.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500"><i class="fa-solid fa-video-slash text-3xl mb-2"></i><p>No videos found</p></div>';
-                } else {
-                    const titleEl = wrapper?.querySelector('h3') || document.querySelector('#channelResultsWrapper h3');
-                    if (titleEl) titleEl.textContent = `Scraped Videos (${videoArray.length})`;
-
-                    videoArray.forEach(v => {
-                        if (v) grid.appendChild(createVideoCard(v));
-                    });
+                    if (titleEl) titleEl.textContent = escapeHtml(channelName) + ' — no videos found';
+                    return;
                 }
+
+                if (titleEl) titleEl.textContent = escapeHtml(channelName) + ' (' + videoArray.length + ' videos)';
+
+                videoArray.forEach(v => {
+                    if (!v) return;
+                    const card = document.createElement('div');
+                    card.className = 'bg-white overflow-hidden shadow rounded-lg border border-gray-100 transition-transform hover:-translate-y-1 hover:shadow-lg duration-200';
+
+                    const thumbnail = escapeHtml(v.thumbnail || 'https://via.placeholder.com/320x180.png?text=No+Thumbnail');
+                    const title = escapeHtml(v.title || 'Unknown');
+                    const duration = formatDuration(v.duration);
+                    const vidUrl = v.url || v.webpage_url || '';
+                    const type = v.type || 'video';
+                    const typeBadge = type === 'short'
+                        ? '<span class="bg-pink-500 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">Short</span>'
+                        : type === 'stream'
+                        ? '<span class="bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">Stream</span>'
+                        : '<span class="bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">Video</span>';
+
+                    card.innerHTML = `
+                        <div class="relative pt-[56.25%] bg-gray-100 group">
+                            <img class="absolute inset-0 w-full h-full object-cover" src="${thumbnail}" alt="Thumbnail" onerror="this.src='https://via.placeholder.com/320x180.png?text=Image+Error'">
+                            <div class="absolute bottom-2 right-2 bg-black bg-opacity-80 text-white text-xs px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
+                                <i class="fa-solid fa-clock"></i>${duration}
+                            </div>
+                            <div class="absolute top-2 left-2">${typeBadge}</div>
+                            <label class="absolute top-2 right-2 w-8 h-8 bg-white bg-opacity-90 rounded-full flex items-center justify-center cursor-pointer shadow hover:bg-opacity-100 transition-all">
+                                <input type="checkbox" class="video-checkbox w-4 h-4 text-blue-600 focus:ring-blue-500 rounded cursor-pointer" data-url="${escapeHtml(vidUrl)}" ${vidUrl && selectedVideos.has(vidUrl) ? 'checked' : ''}>
+                            </label>
+                            <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-opacity duration-200"></div>
+                        </div>
+                        <div class="p-3">
+                            <h4 class="text-xs font-semibold text-gray-900 mb-1 line-clamp-2">${title}</h4>
+                            <div class="flex items-center gap-2 text-xs text-gray-400">
+                                ${v.viewCount ? '<span><i class="fa-solid fa-eye mr-1"></i>' + (v.viewCount >= 1000000 ? (v.viewCount / 1000000).toFixed(1) + 'M' : v.viewCount >= 1000 ? (v.viewCount / 1000).toFixed(1) + 'K' : v.viewCount) + '</span>' : ''}
+                                ${v.uploaded ? '<span><i class="fa-solid fa-calendar mr-1"></i>' + formatDate(v.uploaded) + '</span>' : ''}
+                            </div>
+                        </div>
+                    `;
+
+                    const checkbox = card.querySelector('.video-checkbox');
+                    if (checkbox) {
+                        checkbox.addEventListener('change', () => {
+                            const url = checkbox.dataset.url;
+                            if (checkbox.checked) {
+                                selectedVideos.add(url);
+                            } else {
+                                selectedVideos.delete(url);
+                            }
+                            updateDownloadButton();
+                        });
+                    }
+
+                    grid.appendChild(card);
+                });
             } catch (error) {
-                grid.innerHTML = `<div class="col-span-full text-center py-8 text-red-500"><i class="fa-solid fa-circle-xmark text-3xl mb-2"></i><p>${escapeHtml(error.message)}</p></div>`;
+                grid.innerHTML = '<div class="col-span-full text-center py-8 text-red-500"><i class="fa-solid fa-circle-xmark text-3xl mb-2"></i><p>' + escapeHtml(error.message) + '</p></div>';
                 showToast(error.message, 'error');
             }
         };
@@ -1177,6 +1240,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let queueData = [];
 
         const renderQueueJobs = () => {
+            // Clear loading timeout
+            if (window._queueLoadingTimeout) {
+                clearTimeout(window._queueLoadingTimeout);
+                window._queueLoadingTimeout = null;
+            }
             if (!queueJobsBody) return;
 
             const filtered = queueFilter === 'all' ? queueData : queueData.filter(j => j.status === queueFilter);
@@ -1284,6 +1352,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderQueueJobs();
             } catch (error) {
                 console.error('Queue fetch error:', error);
+                queueData = [];
+                renderQueueJobs();
             }
         };
 
@@ -1293,6 +1363,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (queueEventSource) { queueEventSource.close(); queueEventSource = null; }
             if (queuePollInterval) { clearInterval(queuePollInterval); queuePollInterval = null; }
+
+            // Safety timeout: force-loading to resolve after 8 seconds no matter what
+            if (window._queueLoadingTimeout) {
+                clearTimeout(window._queueLoadingTimeout);
+            }
+            window._queueLoadingTimeout = setTimeout(() => {
+                if (queueLoading && !queueLoading.classList.contains('hidden')) {
+                    queueLoading.classList.add('hidden');
+                    if (queueEmpty) queueEmpty.classList.remove('hidden');
+                    // Show a subtle message that loading timed out
+                    showToast('Queue loaded (empty)', 'info');
+                }
+            }, 8000);
 
             try {
                 queueEventSource = new EventSource('/api/download/queue/events');

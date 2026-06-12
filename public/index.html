@@ -1,43 +1,241 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YT-DLP Web Interface</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind = { config: { darkMode: 'class' } };
+    </script>
+    <script src="https://cdn.tailwindcss.com">
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3b82f6;
+        /* ===== FONTS & BASE ===== */
+        * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: #030712;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Light mode overrides */
+        html:not(.dark) body {
+            background: #f1f5f9;
+        }
+
+        /* ===== CUSTOM SCROLLBAR ===== */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.3);
+            border-radius: 999px;
+            transition: background 0.2s;
+        }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.5); }
+        .dark ::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.25); }
+        .dark ::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.4); }
+
+        /* ===== ANIMATED GRADIENT BG ===== */
+        .hero-gradient {
+            position: relative;
+            overflow: hidden;
+        }
+        .hero-gradient::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at 30% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                        radial-gradient(ellipse at 70% 50%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+                        radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
+            animation: gradientShift 12s ease-in-out infinite alternate;
+            pointer-events: none;
+            z-index: 0;
+        }
+        @keyframes gradientShift {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(2%, -2%) rotate(1deg); }
+            66% { transform: translate(-1%, 1%) rotate(-1deg); }
+            100% { transform: translate(1%, -1%) rotate(0.5deg); }
+        }
+
+        /* Floating particles */
+        .particles {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .particle {
+            position: absolute;
             border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
+            background: rgba(99, 102, 241, 0.15);
+            animation: float linear infinite;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .particle:nth-child(1) { width: 6px; height: 6px; left: 10%; top: 20%; animation-duration: 18s; animation-delay: 0s; }
+        .particle:nth-child(2) { width: 4px; height: 4px; left: 25%; top: 60%; animation-duration: 22s; animation-delay: 2s; background: rgba(139, 92, 246, 0.12); }
+        .particle:nth-child(3) { width: 8px; height: 8px; left: 45%; top: 10%; animation-duration: 20s; animation-delay: 4s; background: rgba(16, 185, 129, 0.1); }
+        .particle:nth-child(4) { width: 5px; height: 5px; left: 65%; top: 70%; animation-duration: 25s; animation-delay: 1s; }
+        .particle:nth-child(5) { width: 7px; height: 7px; left: 80%; top: 30%; animation-duration: 19s; animation-delay: 3s; background: rgba(139, 92, 246, 0.1); }
+        .particle:nth-child(6) { width: 3px; height: 3px; left: 50%; top: 85%; animation-duration: 23s; animation-delay: 5s; background: rgba(16, 185, 129, 0.12); }
+        .particle:nth-child(7) { width: 6px; height: 6px; left: 15%; top: 45%; animation-duration: 21s; animation-delay: 2.5s; }
+        .particle:nth-child(8) { width: 4px; height: 4px; left: 90%; top: 55%; animation-duration: 17s; animation-delay: 4.5s; background: rgba(99, 102, 241, 0.1); }
+        @keyframes float {
+            0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.6; }
+            25% { transform: translateY(-30px) translateX(10px) scale(1.1); opacity: 0.9; }
+            50% { transform: translateY(-10px) translateX(-15px) scale(0.9); opacity: 0.7; }
+            75% { transform: translateY(-40px) translateX(5px) scale(1.05); opacity: 0.8; }
+            100% { transform: translateY(-60px) translateX(-10px) scale(0.95); opacity: 0.4; }
         }
+
+        /* ===== GLASSMORPHISM CARDS ===== */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+        }
+        .dark .glass-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(99, 102, 241, 0.12);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        /* ===== CARD HOVER LIFT + GLOW ===== */
+        .hover-lift {
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+        .hover-lift:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
+            border-color: rgba(99, 102, 241, 0.25);
+        }
+        .dark .hover-lift:hover {
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.2);
+        }
+
+        /* ===== GLOW BORDER ===== */
+        .glow-border {
+            position: relative;
+        }
+        .glow-border::after {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.1), rgba(99, 102, 241, 0.3));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .glow-border:hover::after { opacity: 1; }
+
+        /* ===== TAB SYSTEM ===== */
+        .tab-btn {
+            transition: all 0.25s ease;
+            position: relative;
+        }
+        .tab-btn::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%) scaleX(0);
+            width: 60%;
+            height: 2.5px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .tab-btn.tab-active::after { transform: translateX(-50%) scaleX(1); }
+        .tab-btn.tab-active {
+            color: #818cf8 !important;
+        }
+        .dark .tab-btn.tab-active { color: #a5b4fc !important; }
+
+        /* ===== LOADER ===== */
+        .loader {
+            border: 3px solid rgba(99, 102, 241, 0.15);
+            border-top: 3px solid #6366f1;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            animation: spin 0.8s linear infinite;
+        }
+        .dark .loader { border-color: rgba(99, 102, 241, 0.2); border-top-color: #818cf8; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* ===== SKELETON SHIMMER ===== */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.06) 25%, rgba(99, 102, 241, 0.12) 50%, rgba(99, 102, 241, 0.06) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.8s ease-in-out infinite;
+            border-radius: 8px;
+        }
+        .dark .skeleton {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 25%, rgba(99, 102, 241, 0.18) 50%, rgba(99, 102, 241, 0.08) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.8s ease-in-out infinite;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+        .skeleton-card {
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .skeleton-card > div:first-child { height: 180px; }
+        .skeleton-card > div:last-child { padding: 16px; }
+
+        /* ===== PROGRESS BAR STRIPE ===== */
+        .progress-stripe {
+            background-image: linear-gradient(45deg,
+                rgba(255, 255, 255, 0.15) 25%,
+                transparent 25%,
+                transparent 50%,
+                rgba(255, 255, 255, 0.15) 50%,
+                rgba(255, 255, 255, 0.15) 75%,
+                transparent 75%,
+                transparent);
+            background-size: 1.5rem 1.5rem;
+            animation: progress-stripe 1.2s linear infinite;
+        }
+        @keyframes progress-stripe {
+            0% { background-position: 1.5rem 0; }
+            100% { background-position: 0 0; }
+        }
+
+        /* ===== TOAST SLIDE-IN ===== */
+        #toastContainer > div {
+            animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes toastSlideIn {
+            from { opacity: 0; transform: translateX(40px) scale(0.95); }
+            to { opacity: 1; transform: translateX(0) scale(1); }
+        }
+
+        /* ===== LINE CLAMP ===== */
         .line-clamp-2 {
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
-        .tab-active {
-            border-bottom-color: #3b82f6;
-            color: #1d4ed8;
-        }
-        .progress-bar-animated {
-            background-size: 1rem 1rem;
-            animation: progress-bar-stripes 1s linear infinite;
-        }
-        @keyframes progress-bar-stripes {
-            from { background-position: 1rem 0; }
-            to { background-position: 0 0; }
-        }
-        .badge {
+
+        /* ===== TAB BADGE ===== */
+        .tab-badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -49,53 +247,96 @@
             line-height: 1;
             border-radius: 9999px;
         }
+
+        /* ===== VIDEO CARD OVERLAY ===== */
+        .video-card-thumb {
+            position: relative;
+            overflow: hidden;
+        }
+        .video-card-thumb img {
+            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .video-card-thumb:hover img {
+            transform: scale(1.08);
+        }
+        .video-card-thumb .play-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0);
+            transition: background 0.3s ease;
+        }
+        .video-card-thumb:hover .play-overlay {
+            background: rgba(0,0,0,0.35);
+        }
+        .video-card-thumb .play-overlay i {
+            font-size: 2.5rem;
+            color: rgba(255,255,255,0.8);
+            opacity: 0;
+            transform: scale(0.7);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+        }
+        .video-card-thumb:hover .play-overlay i {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .video-card-thumb .gradient-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
+            pointer-events: none;
+        }
+
+        /* ===== CHANNEL CARD ===== */
         .channel-card {
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
         }
         .channel-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.12);
+            border-color: rgba(99, 102, 241, 0.2);
         }
+        .dark .channel-card:hover {
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.18);
+        }
+
+        /* ===== FORMAT MODAL ===== */
         #formatModal {
             transition: opacity 0.2s ease;
         }
-        #formatModal.show {
-            display: flex;
-        }
+        #formatModal.show { display: flex; }
         #formatModalContent {
             transition: transform 0.2s ease;
         }
-        #formatModal.show #formatModalContent {
-            transform: scale(1);
-        }
+        #formatModal.show #formatModalContent { transform: scale(1); }
 
-        /* Custom Tooltip System */
-        [data-tooltip] {
-            position: relative;
-            cursor: help;
-        }
+        /* ===== TOOLTIP ===== */
         #global-tooltip {
             position: fixed;
             z-index: 9999;
             padding: 10px 14px;
-            background: #1f2937;
-            color: #f3f4f6;
+            background: #1e293b;
+            color: #f1f5f9;
             font-size: 0.8rem;
             line-height: 1.5;
-            border-radius: 8px;
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3), 0 4px 10px -5px rgba(0,0,0,0.2);
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.2);
             pointer-events: none;
             max-width: 320px;
             opacity: 0;
             transition: opacity 0.15s ease, transform 0.15s ease;
             transform: translateY(4px);
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: 'Inter', system-ui, sans-serif;
             white-space: pre-line;
+            border: 1px solid rgba(99, 102, 241, 0.15);
         }
-        #global-tooltip.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        #global-tooltip.show { opacity: 1; transform: translateY(0); }
         #global-tooltip .tooltip-title {
             font-weight: 600;
             font-size: 0.85rem;
@@ -103,368 +344,626 @@
             color: #fff;
         }
         #global-tooltip .tooltip-desc {
-            color: #d1d5db;
+            color: #cbd5e1;
             font-size: 0.75rem;
         }
+
+        /* ===== QUEUE FILTER BUTTONS ===== */
+        .queue-filter-btn {
+            transition: all 0.2s ease;
+        }
+
+        /* ===== TABLE STYLES ===== */
+        .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(51, 65, 85, 0.5); }
+        .dark .bg-gray-50 { background: rgba(30, 41, 59, 0.4); }
+        .dark .text-gray-500 { color: #94a3b8; }
+        .dark .hover\:bg-gray-50:hover { background: rgba(51, 65, 85, 0.3); }
+        .dark .uppercase.tracking-wider { color: #64748b; }
+
+        /* ===== DARK MODE OVERRIDES FOR JS-SET ELEMENTS ===== */
+        .dark #statusMessage.rounded-md { backdrop-filter: blur(8px); }
+        .dark #statusMessage.bg-red-50 { background: rgba(239, 68, 68, 0.12) !important; border-color: rgba(239, 68, 68, 0.25) !important; }
+        .dark #statusMessage.bg-green-50 { background: rgba(16, 185, 129, 0.12) !important; border-color: rgba(16, 185, 129, 0.25) !important; }
+        .dark #statusMessage.bg-blue-50 { background: rgba(59, 130, 246, 0.12) !important; border-color: rgba(59, 130, 246, 0.25) !important; }
+        .dark #statusMessage .text-red-800 { color: #fca5a5 !important; }
+        .dark #statusMessage .text-green-800 { color: #6ee7b7 !important; }
+        .dark #statusMessage .text-blue-800 { color: #93c5fd !important; }
+
+        .dark #setupComplete.bg-green-50 { background: rgba(16, 185, 129, 0.12) !important; border-color: rgba(16, 185, 129, 0.25) !important; }
+        .dark #setupComplete .text-green-800 { color: #6ee7b7 !important; }
+        .dark #updateAlert.bg-yellow-50 { background: rgba(245, 158, 11, 0.12) !important; border-color: rgba(245, 158, 11, 0.25) !important; }
+        .dark #updateAlert .text-yellow-800 { color: #fcd34d !important; }
+
+        /* Dark table rows created by JS */
+        .dark #filesBody tr.hover\:bg-gray-50:hover,
+        .dark #queueBody tr.hover\:bg-gray-50:hover { background: rgba(51, 65, 85, 0.3) !important; }
+        .dark #filesBody .text-gray-900 { color: #e2e8f0 !important; }
+        .dark #queueBody .text-gray-900 { color: #e2e8f0 !important; }
+
+        /* Dynamic queue job status badges */
+        .dark .bg-yellow-100 { background: rgba(245, 158, 11, 0.15) !important; }
+        .dark .text-yellow-800 { color: #fcd34d !important; }
+        .dark .bg-blue-100 { background: rgba(59, 130, 246, 0.15) !important; }
+        .dark .text-blue-800 { color: #93c5fd !important; }
+        .dark .bg-green-100 { background: rgba(16, 185, 129, 0.15) !important; }
+        .dark .text-green-800 { color: #6ee7b7 !important; }
+        .dark .bg-red-100 { background: rgba(239, 68, 68, 0.15) !important; }
+        .dark .text-red-800 { color: #fca5a5 !important; }
+
+        /* Channel cards created by JS */
+        .dark #channelsGrid > div,
+        .dark #channelResultsGrid > div {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border-color: rgba(99, 102, 241, 0.12) !important;
+            backdrop-filter: blur(12px);
+        }
+        .dark #channelsGrid .text-gray-900,
+        .dark #channelResultsGrid .text-gray-900 { color: #e2e8f0 !important; }
+        .dark #channelsGrid .text-gray-500 { color: #94a3b8 !important; }
+        .dark #channelResultsGrid .text-gray-400 { color: #64748b !important; }
+        .dark #channelsGrid .border-gray-200 { border-color: rgba(51, 65, 85, 0.4) !important; }
+        .dark #channelsGrid .bg-red-50 { background: rgba(239, 68, 68, 0.1) !important; }
+        .dark #channelsGrid .border-red-200 { border-color: rgba(239, 68, 68, 0.2) !important; }
+        .dark #channelsGrid .text-red-700 { color: #fca5a5 !important; }
+
+        /* Options sections created by JS */
+        .dark #optionsContainer > div {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border-color: rgba(99, 102, 241, 0.12) !important;
+            backdrop-filter: blur(12px);
+        }
+        .dark #optionsContainer .bg-gray-50 { background: rgba(30, 41, 59, 0.4) !important; }
+        .dark #optionsContainer .hover\:bg-gray-100:hover { background: rgba(51, 65, 85, 0.3) !important; }
+        .dark #optionsContainer .text-gray-900 { color: #e2e8f0 !important; }
+        .dark #optionsContainer .text-gray-700 { color: #cbd5e1 !important; }
+        .dark #optionsContainer .text-gray-500 { color: #94a3b8 !important; }
+        .dark #optionsContainer .text-gray-400 { color: #64748b !important; }
+        .dark #optionsContainer .border-gray-200 { border-color: rgba(51, 65, 85, 0.4) !important; }
+        .dark #optionsContainer .border-gray-100 { border-color: rgba(51, 65, 85, 0.2) !important; }
+
+        /* ===== DARK MODE INPUT OVERRIDES ===== */
+        .dark input[type="text"],
+        .dark input[type="number"],
+        .dark input[type="url"],
+        .dark select,
+        .dark textarea {
+            background: rgba(15, 23, 42, 0.7) !important;
+            border-color: rgba(99, 102, 241, 0.2) !important;
+            color: #e2e8f0 !important;
+        }
+        .dark input::placeholder { color: #64748b !important; }
+        .dark input:focus, .dark select:focus, .dark textarea:focus {
+            border-color: #6366f1 !important;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+        }
+
+        /* ===== DARK MODE TABLE OVERRIDES ===== */
+        .dark table { background: transparent !important; }
+        .dark thead { background: rgba(30, 41, 59, 0.4) !important; }
+        .dark thead th { color: #94a3b8 !important; }
+        .dark tbody tr { background: transparent !important; }
+        .dark tbody td { color: #cbd5e1 !important; border-color: rgba(51, 65, 85, 0.3) !important; }
+
+        /* ===== FADE IN ===== */
+        .fade-in { animation: fadeIn 0.4s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ===== RESPONSIVE NAV ===== */
+        @media (max-width: 640px) {
+            .nav-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+            .nav-scroll::-webkit-scrollbar { display: none; }
+            .tab-btn { font-size: 0.75rem; padding: 0.5rem 0.65rem; }
+            .tab-btn i { margin-right: 0.25rem; }
+        }
+
+        /* ===== SELECT / RANGE STYLING ===== */
+        select option { background: #1e293b; color: #e2e8f0; }
+        input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: rgba(99, 102, 241, 0.2); outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #6366f1; cursor: pointer; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3); transition: transform 0.15s ease; }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+        input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #6366f1; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3); }
+        .dark input[type="range"] { background: rgba(99, 102, 241, 0.15); }
+        input[type="checkbox"] { accent-color: #6366f1; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
+<body>
 
-    <!-- Navbar / Tabs -->
-    <nav class="bg-white shadow-sm border-b border-gray-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-2 text-xl font-bold text-gray-900 shrink-0">
-                    <i class="fa-solid fa-cloud-arrow-down text-blue-600"></i>
-                    <span>YT-DLP Web</span>
+<!-- ===== NAVBAR ===== -->
+<nav class="sticky top-0 z-50 border-b border-gray-800/50 hero-gradient" style="background: rgba(3, 7, 18, 0.85); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <!-- Logo -->
+            <div class="flex items-center gap-2.5 shrink-0">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid fa-cloud-arrow-down text-white text-sm"></i>
                 </div>
-                <div class="flex gap-1 overflow-x-auto">
-                    <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap" data-tab="download">
-                        <i class="fa-solid fa-download mr-1.5"></i>Download
-                    </button>
-                    <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap" data-tab="setup">
-                        <i class="fa-solid fa-gear mr-1.5"></i>Setup
-                    </button>
-                    <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap" data-tab="downloads">
-                        <i class="fa-solid fa-folder mr-1.5"></i>Downloads
-                    </button>
-                    <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap relative" data-tab="channels">
-                        <i class="fa-solid fa-users mr-1.5"></i>Channels
-                        
-                    </button>
-                    <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap relative" data-tab="queue">
-                        <i class="fa-solid fa-list mr-1.5"></i>Queue
-                        
-                    </button>
-                    <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap" data-tab="options">
-                        <i class="fa-solid fa-sliders mr-1.5"></i>Options
-                    </button>
-                </div>
+                <span class="text-lg font-bold text-white tracking-tight">YT-DLP <span class="text-indigo-400">Web</span></span>
+            </div>
+
+            <!-- Tabs (center, scrollable) -->
+            <div class="nav-scroll flex gap-0.5 mx-2 flex-1 justify-center">
+                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="download">
+                    <i class="fa-solid fa-download mr-1.5"></i>Download
+                </button>
+                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="setup">
+                    <i class="fa-solid fa-gear mr-1.5"></i>Setup
+                </button>
+                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="downloads">
+                    <i class="fa-solid fa-folder mr-1.5"></i>Downloads
+                </button>
+                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap relative" data-tab="channels">
+                    <i class="fa-solid fa-users mr-1.5"></i>Channels
+                </button>
+                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap relative" data-tab="queue">
+                    <i class="fa-solid fa-list mr-1.5"></i>Queue
+                </button>
+                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="options">
+                    <i class="fa-solid fa-sliders mr-1.5"></i>Options
+                </button>
+            </div>
+
+            <!-- Dark Mode Toggle -->
+            <div class="flex items-center shrink-0">
+                <button id="darkModeToggle" class="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-300" aria-label="Toggle dark mode">
+                    <i class="fa-solid fa-moon text-lg" id="darkModeIcon"></i>
+                </button>
             </div>
         </div>
-    </nav>
-
-    <!-- ===================== TAB: DOWNLOAD ===================== -->
-    <div id="tab-download" class="tab-content">
-        <header class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-lg py-12 px-4 sm:px-6 lg:px-8">
-            <div class="max-w-4xl mx-auto text-center">
-                <p class="text-xl text-blue-100 mb-8">Download videos, playlists, and channels easily.</p>
-                <div class="bg-white rounded-lg p-4 shadow-md flex flex-col md:flex-row gap-4">
-                    <input type="text" id="urlInput" placeholder="Enter video, playlist, or channel URL" class="flex-1 min-w-0 block w-full px-4 py-3 rounded-md border-gray-300 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base shadow-sm border" />
-                    <button id="btnMetadata" class="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                        Fetch Metadata
-                    </button>
-                    <button id="btnScrape" class="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                        Scrape Playlist
-                    </button>
-                </div>
-            </div>
-        </header>
-
-        <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-            <section class="bg-white shadow rounded-lg p-6 mb-8">
-                <h2 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2">Download Settings</h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Quality</label>
-                        <select id="qualitySelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border shadow-sm transition-opacity">
-                            <option value="best">Best Available</option>
-                            <option value="1080p">1080p</option>
-                            <option value="720p">720p</option>
-                            <option value="480p">480p</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Format</label>
-                        <select id="formatSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border shadow-sm transition-opacity">
-                            <option value="mp4">MP4</option>
-                            <option value="webm">WebM</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Audio Format</label>
-                        <select id="audioFormatSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border shadow-sm">
-                            <option value="">None (Video)</option>
-                            <option value="mp3">MP3</option>
-                            <option value="m4a">M4A</option>
-                            <option value="opus">Opus</option>
-                            <option value="flac">FLAC</option>
-                            <option value="wav">WAV</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Output Template</label>
-                        <input type="text" id="outputTemplateInput" placeholder="%(title)s.%(ext)s" class="mt-1 block w-full px-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border shadow-sm">
-                    </div>
-                    <div class="flex items-end">
-                        <div class="flex items-center gap-4">
-                            <div class="flex items-center">
-                                <input id="audioOnlyToggle" type="checkbox" class="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer">
-                                <label for="audioOnlyToggle" class="ml-3 block text-sm font-medium text-gray-700 cursor-pointer">
-                                    Audio Only (MP3)
-                                </label>
-                            </div>
-                            <button id="btnFormatList" class="inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm">
-                                <i class="fa-solid fa-list mr-1.5"></i>Show Formats
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-
-            <div id="statusMessage" class="hidden rounded-md p-4 mb-8 transition-all">
-                <div class="flex">
-                    <div class="flex-shrink-0 mt-0.5" id="statusIcon"></div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium" id="statusText"></p>
-                    </div>
-                </div>
-            </div>
-
-            <div id="loadingIndicator" class="hidden flex-col items-center justify-center py-12">
-                <div class="loader mb-4"></div>
-                <p class="text-gray-500 text-lg" id="loadingText">Processing...</p>
-            </div>
-
-            <div id="resultsContainer" class="hidden">
-                <h2 class="text-2xl font-bold text-gray-900 mb-6" id="resultsTitle">Results</h2>
-                <div id="resultsGrid" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
-            </div>
-        </main>
     </div>
+</nav>
 
-    <!-- ===================== TAB: SETUP ===================== -->
-    <div id="tab-setup" class="tab-content hidden">
-        <main class="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-            <section class="bg-white shadow rounded-lg p-6 mb-8">
-                <h2 class="text-lg font-medium text-gray-900 mb-2">Setup Dependencies</h2>
-                <p class="text-sm text-gray-500 mb-6">Download and install yt-dlp and ffmpeg required for video processing.</p>
-
-                <!-- Update Available Alert -->
-                <div id="updateAlert" class="hidden bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-6">
-                    <div class="flex items-start">
-                        <div class="flex-shrink-0"><i class="fa-solid fa-triangle-exclamation text-yellow-400 text-lg"></i></div>
-                        <div class="ml-3">
-                            <p class="text-sm font-medium text-yellow-800" id="updateAlertText">An update is available for yt-dlp.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <button id="btnSetupDownload" class="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    <i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg
+<!-- ===================== TAB: DOWNLOAD ===================== -->
+<div id="tab-download" class="tab-content">
+    <header class="relative overflow-hidden hero-gradient bg-gradient-to-br from-gray-900 via-indigo-950/40 to-gray-900 border-b border-gray-800/50 py-14 px-4 sm:px-6 lg:px-8">
+        <div class="particles">
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+        </div>
+        <div class="max-w-4xl mx-auto text-center relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium mb-4">
+                <i class="fa-solid fa-bolt"></i>
+                <span>Ready to download</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-white mb-3 tracking-tight">Download Any Media</h1>
+            <p class="text-gray-400 text-lg mb-8 max-w-2xl mx-auto">Videos, playlists, channels &mdash; paste a URL and go.</p>
+            <div class="glass-card rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col md:flex-row gap-3 max-w-3xl mx-auto">
+                <input type="text" id="urlInput" placeholder="Enter video, playlist, or channel URL" class="flex-1 min-w-0 block w-full px-5 py-3.5 rounded-xl border-0 bg-gray-900/60 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-base shadow-sm" />
+                <button id="btnMetadata" class="inline-flex justify-center items-center px-6 py-3.5 border border-transparent text-base font-semibold rounded-xl shadow-lg shadow-indigo-500/20 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-magnifying-glass mr-2"></i>Fetch Metadata
                 </button>
-            </section>
+                <button id="btnScrape" class="inline-flex justify-center items-center px-6 py-3.5 border border-indigo-500/30 text-base font-semibold rounded-xl text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-list mr-2"></i>Scrape Playlist
+                </button>
+            </div>
+        </div>
+    </header>
 
-            <div id="setupProgress" class="hidden space-y-6">
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        <!-- Download Settings -->
+        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
+                <i class="fa-solid fa-sliders text-indigo-500"></i>
+                Download Settings
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm font-medium text-gray-700"><i class="fa-brands fa-youtube mr-1.5"></i>yt-dlp</span>
-                        <span class="text-sm text-gray-500" id="ytdlpStatus">Waiting...</span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-3">
-                        <div id="ytdlpBar" class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1" id="ytdlpPercent">0%</p>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Quality</label>
+                    <select id="qualitySelect" class="mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
+                        <option value="best">Best Available</option>
+                        <option value="1080p">1080p</option>
+                        <option value="720p">720p</option>
+                        <option value="480p">480p</option>
+                    </select>
                 </div>
                 <div>
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm font-medium text-gray-700"><i class="fa-solid fa-video mr-1.5"></i>ffmpeg</span>
-                        <span class="text-sm text-gray-500" id="ffmpegStatus">Waiting...</span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-3">
-                        <div id="ffmpegBar" class="bg-green-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1" id="ffmpegPercent">0%</p>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Format</label>
+                    <select id="formatSelect" class="mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
+                        <option value="mp4">MP4</option>
+                        <option value="webm">WebM</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Audio Format</label>
+                    <select id="audioFormatSelect" class="mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
+                        <option value="">None (Video)</option>
+                        <option value="mp3">MP3</option>
+                        <option value="m4a">M4A</option>
+                        <option value="opus">Opus</option>
+                        <option value="flac">FLAC</option>
+                        <option value="wav">WAV</option>
+                    </select>
                 </div>
             </div>
-
-            <div id="setupComplete" class="hidden bg-green-50 border border-green-200 rounded-md p-4 mt-6">
-                <div class="flex">
-                    <div class="flex-shrink-0"><i class="fa-solid fa-circle-check text-green-400 text-lg"></i></div>
-                    <div class="ml-3"><p class="text-sm font-medium text-green-800">Setup complete! All dependencies are ready.</p></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Output Template</label>
+                    <input type="text" id="outputTemplateInput" placeholder="%(title)s.%(ext)s" class="mt-1 block w-full px-4 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
                 </div>
-            </div>
-        </main>
-    </div>
-
-    <!-- ===================== TAB: DOWNLOADS ===================== -->
-    <div id="tab-downloads" class="tab-content hidden">
-        <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-            <section class="bg-white shadow rounded-lg p-6">
-                <h2 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2">
-                    <i class="fa-solid fa-folder-open mr-2"></i>Downloaded Files
-                </h2>
-                <div id="filesLoading" class="flex flex-col items-center justify-center py-12">
-                    <div class="loader mb-4"></div>
-                    <p class="text-gray-500">Loading files...</p>
-                </div>
-                <div id="filesEmpty" class="hidden text-center py-12">
-                    <i class="fa-solid fa-folder-open text-gray-300 text-5xl mb-4"></i>
-                    <p class="text-gray-500 text-lg">No downloads yet</p>
-                    <p class="text-gray-400 text-sm mt-1">Downloaded files will appear here.</p>
-                </div>
-                <div id="filesTableWrapper" class="hidden overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Filename</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="filesBody" class="bg-white divide-y divide-gray-200"></tbody>
-                    </table>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- ===================== TAB: CHANNELS ===================== -->
-    <div id="tab-channels" class="tab-content hidden">
-        <main class="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-            <!-- Subscribe -->
-            <section class="bg-white shadow rounded-lg p-6 mb-8">
-                <h2 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2">
-                    <i class="fa-solid fa-users mr-2"></i>Subscribed Channels
-                </h2>
-                <div class="flex flex-col sm:flex-row gap-3 mb-6">
-                    <input type="text" id="channelUrlInput" placeholder="Paste a channel URL like youtube.com/@ChannelName" class="flex-1 min-w-0 block w-full px-4 py-2.5 rounded-md border-gray-300 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm shadow-sm border" />
-                    <button id="btnSubscribe" class="inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors whitespace-nowrap">
-                        <i class="fa-solid fa-plus mr-1.5"></i>Subscribe
-                    </button>
-                </div>
-                <div id="channelsLoading" class="hidden flex-col items-center justify-center py-8">
-                    <div class="loader mb-3"></div>
-                    <p class="text-gray-400 text-sm">Loading channels...</p>
-                </div>
-                <div id="channelsEmpty" class="hidden text-center py-8">
-                    <i class="fa-solid fa-users text-gray-300 text-4xl mb-3"></i>
-                    <p class="text-gray-500">No channels subscribed yet</p>
-                    <p class="text-gray-400 text-sm mt-1">Enter a channel URL above to get started.</p>
-                </div>
-                <div id="channelsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
-            </section>
-
-            <!-- Browse Results -->
-            <section id="channelResultsSection" class="hidden bg-white shadow rounded-lg p-6">
-                <div class="flex items-center justify-between mb-4 border-b pb-2">
-                    <h2 class="text-lg font-medium text-gray-900">
-                        <i class="fa-solid fa-video mr-2"></i><span id="channelResultsTitle">Channel Videos</span>
-                    </h2>
-                    <button id="btnDownloadSelected" class="inline-flex justify-center items-center px-5 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fa-solid fa-download mr-1.5"></i>Download Selected (<span id="selectedCount">0</span>)
-                    </button>
-                </div>
-                <div id="channelResultsGrid" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
-            </section>
-        </main>
-    </div>
-
-    <!-- ===================== TAB: QUEUE ===================== -->
-    <div id="tab-queue" class="tab-content hidden">
-        <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-            <!-- Controls -->
-            <section class="bg-white shadow rounded-lg p-6 mb-8">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div class="flex items-center gap-4">
-                        <label class="text-sm font-medium text-gray-700">Concurrency:</label>
-                        <div class="flex items-center gap-2">
-                            <input type="range" id="concurrencySlider" min="1" max="5" value="2" class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                            <span id="concurrencyValue" class="text-sm font-semibold text-gray-900 w-4 text-center">2</span>
-                        </div>
-                    </div>
-                    <button id="btnCancelAll" class="inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors shadow-sm">
-                        <i class="fa-solid fa-ban mr-1.5"></i>Cancel All
-                    </button>
-                </div>
-            </section>
-
-            <!-- Filters -->
-            <section class="bg-white shadow rounded-lg p-4 mb-6">
-                <div class="flex flex-wrap gap-2" id="queueFilters">
-                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors" data-status="all">All</button>
-                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors" data-status="queued">Queued</button>
-                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors" data-status="downloading">Downloading</button>
-                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors" data-status="completed">Completed</button>
-                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors" data-status="failed">Failed</button>
-                </div>
-            </section>
-
-            <!-- Job List -->
-            <section class="bg-white shadow rounded-lg p-6">
-                <h2 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2">
-                    <i class="fa-solid fa-list mr-2"></i>Jobs
-                </h2>
-                <div id="queueLoading" class="flex flex-col items-center justify-center py-8">
-                    <div class="loader mb-3"></div>
-                    <p class="text-gray-400 text-sm">Loading queue...</p>
-                </div>
-                <div id="queueEmpty" class="hidden text-center py-8">
-                    <i class="fa-solid fa-list text-gray-300 text-4xl mb-3"></i>
-                    <p class="text-gray-500">No jobs in queue</p>
-                    <p class="text-gray-400 text-sm mt-1">Downloads will appear here when started.</p>
-                </div>
-                <div id="queueTableWrapper" class="hidden overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
-                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                                <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="queueBody" class="bg-white divide-y divide-gray-200"></tbody>
-                    </table>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- ===================== TAB: OPTIONS ===================== -->
-    <div id="tab-options" class="tab-content hidden">
-        <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-            <!-- Header -->
-            <section class="bg-white shadow rounded-lg p-6 mb-8">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-medium text-gray-900">Advanced Options</h2>
-                        <p class="text-sm text-gray-500 mt-1">All yt-dlp options organized by category. Changes apply to new downloads.</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <button id="btnResetOptions" class="inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm">
-                            <i class="fa-solid fa-rotate-left mr-1.5"></i>Reset to Defaults
+                <div class="flex items-end">
+                    <div class="flex items-center gap-4 flex-wrap">
+                        <label class="relative inline-flex items-center cursor-pointer gap-3">
+                            <input id="audioOnlyToggle" type="checkbox" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-300 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 shadow-sm"></div>
+                            <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Audio Only (MP3)</span>
+                        </label>
+                        <button id="btnFormatList" class="inline-flex justify-center items-center px-4 py-2.5 border border-gray-300 dark:border-gray-700/50 text-sm font-medium rounded-xl text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-sm">
+                            <i class="fa-solid fa-list mr-1.5"></i>Show Formats
                         </button>
                     </div>
                 </div>
-            </section>
+            </div>
+        </section>
 
-            <!-- Options Container -->
-            <div id="optionsContainer">
-                <div class="flex flex-col items-center justify-center py-16">
-                    <div class="loader mb-4"></div>
-                    <p class="text-gray-400">Loading options...</p>
+        <!-- Status Message -->
+        <div id="statusMessage" class="hidden rounded-xl p-5 transition-all duration-300">
+            <div class="flex items-start gap-3">
+                <div class="flex-shrink-0 mt-0.5" id="statusIcon"></div>
+                <div class="flex-1">
+                    <p class="text-sm font-medium" id="statusText"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden flex-col items-center justify-center py-16">
+            <div class="loader mb-5"></div>
+            <p class="text-gray-400 text-lg" id="loadingText">Processing...</p>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsContainer" class="hidden">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2" id="resultsTitle">
+                <i class="fa-solid fa-film text-indigo-500"></i>
+                Results
+            </h2>
+            <div id="resultsGrid" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+        </div>
+    </main>
+</div>
+
+<!-- ===================== TAB: SETUP ===================== -->
+<div id="tab-setup" class="tab-content hidden">
+    <main class="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+        <div class="glass-card rounded-2xl p-6 sm:p-8 mb-8 fade-in">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-toolbox text-indigo-500"></i>
+                Setup Dependencies
+            </h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Download and install yt-dlp and ffmpeg required for video processing.</p>
+
+            <!-- Update Available Alert -->
+            <div id="updateAlert" class="hidden rounded-xl p-4 mb-6 border" style="background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.25);">
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0"><i class="fa-solid fa-triangle-exclamation text-amber-400 text-lg"></i></div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-amber-700 dark:text-amber-300" id="updateAlertText">An update is available for yt-dlp.</p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Save -->
-            <div class="sticky bottom-4 mt-8 flex justify-center">
-                <button id="btnSaveOptions" class="inline-flex justify-center items-center px-8 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                    <i class="fa-solid fa-floppy-disk mr-2"></i>Save Options
+            <div class="flex flex-wrap items-center gap-3">
+                <button id="btnSetupDownload" class="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-semibold rounded-xl shadow-lg shadow-emerald-500/20 text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg
                 </button>
             </div>
-        </main>
+        </div>
+
+        <!-- Setup Progress -->
+        <div id="setupProgress" class="hidden space-y-6 glass-card rounded-2xl p-6 sm:p-8 fade-in">
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300"><i class="fa-brands fa-youtube mr-1.5 text-red-500"></i>yt-dlp</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-400" id="ytdlpStatus">Waiting...</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-3 overflow-hidden">
+                    <div id="ytdlpBar" class="h-3 rounded-full transition-all duration-500 ease-out progress-stripe bg-gradient-to-r from-indigo-600 to-violet-600" style="width: 0%"></div>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5" id="ytdlpPercent">0%</p>
+            </div>
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300"><i class="fa-solid fa-video mr-1.5 text-emerald-500"></i>ffmpeg</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-400" id="ffmpegStatus">Waiting...</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-3 overflow-hidden">
+                    <div id="ffmpegBar" class="h-3 rounded-full transition-all duration-500 ease-out progress-stripe bg-gradient-to-r from-emerald-500 to-teal-500" style="width: 0%"></div>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5" id="ffmpegPercent">0%</p>
+            </div>
+        </div>
+
+        <!-- Setup Complete -->
+        <div id="setupComplete" class="hidden rounded-xl p-5 mt-6 border fade-in" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.25);">
+            <div class="flex items-start gap-3">
+                <div class="flex-shrink-0"><i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i></div>
+                <div class="flex-1"><p class="text-sm font-medium text-emerald-700 dark:text-emerald-300">Setup complete! All dependencies are ready.</p></div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- ===================== TAB: DOWNLOADS ===================== -->
+<div id="tab-downloads" class="tab-content hidden">
+    <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700/30 pb-4">
+                <i class="fa-solid fa-folder-open text-indigo-500"></i>
+                Downloaded Files
+            </h2>
+
+            <!-- Loading -->
+            <div id="filesLoading" class="flex flex-col items-center justify-center py-16">
+                <div class="skeleton-card w-full max-w-md space-y-4">
+                    <div class="skeleton h-12 w-full"></div>
+                    <div class="skeleton h-12 w-5/6"></div>
+                    <div class="skeleton h-12 w-4/6"></div>
+                    <div class="skeleton h-12 w-3/6"></div>
+                </div>
+                <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading files...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div id="filesEmpty" class="hidden flex flex-col items-center justify-center py-16">
+                <svg class="w-32 h-32 mb-6 text-gray-600 dark:text-gray-700" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="20" y="28" width="88" height="76" rx="8" stroke="currentColor" stroke-width="4" fill="none"/>
+                    <path d="M52 28 V20 A4 4 0 0 1 56 16 H72 A4 4 0 0 1 76 20 V28" stroke="currentColor" stroke-width="4" fill="none"/>
+                    <circle cx="64" cy="80" r="12" stroke="currentColor" stroke-width="3" fill="none"/>
+                    <path d="M64 74 V86 M58 80 H70" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M40 48 H60 M40 56 H52" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+                </svg>
+                <p class="text-gray-300 dark:text-gray-500 text-lg font-medium">No downloads yet</p>
+                <p class="text-gray-500 dark:text-gray-600 text-sm mt-1">Downloaded files will appear here.</p>
+            </div>
+
+            <!-- Table -->
+            <div id="filesTableWrapper" class="hidden overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700/30">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700/30">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filename</th>
+                            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Size</th>
+                            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                            <th scope="col" class="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="filesBody" class="divide-y divide-gray-200 dark:divide-gray-700/30"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- ===================== TAB: CHANNELS ===================== -->
+<div id="tab-channels" class="tab-content hidden">
+    <main class="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        <!-- Subscribe -->
+        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
+                <i class="fa-solid fa-users text-indigo-500"></i>
+                Subscribed Channels
+            </h2>
+            <div class="flex flex-col sm:flex-row gap-3 mb-6">
+                <input type="text" id="channelUrlInput" placeholder="Paste a channel URL like youtube.com/@ChannelName" class="flex-1 min-w-0 block w-full px-4 py-2.5 rounded-xl border-0 bg-gray-100 dark:bg-gray-800/50 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-sm shadow-sm" />
+                <button id="btnSubscribe" class="inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-plus mr-1.5"></i>Subscribe
+                </button>
+            </div>
+
+            <!-- Loading -->
+            <div id="channelsLoading" class="hidden flex-col items-center justify-center py-10">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-4xl">
+                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                </div>
+                <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading channels...</p>
+            </div>
+
+            <!-- Empty -->
+            <div id="channelsEmpty" class="hidden flex flex-col items-center justify-center py-12">
+                <svg class="w-32 h-32 mb-6 text-gray-600 dark:text-gray-700" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="64" cy="48" r="18" stroke="currentColor" stroke-width="4" fill="none"/>
+                    <path d="M30 104 C30 84 45 72 64 72 C83 72 98 84 98 104" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/>
+                    <path d="M85 32 L98 22 L92 36 L105 42 L92 48 L98 62 L85 52 L72 62 L78 48 L65 42 L78 36 L72 22 L85 32Z" stroke="currentColor" stroke-width="2.5" fill="none" opacity="0.3" transform="translate(0, 10) scale(0.6)"/>
+                </svg>
+                <p class="text-gray-300 dark:text-gray-500 text-lg font-medium">No channels subscribed yet</p>
+                <p class="text-gray-500 dark:text-gray-600 text-sm mt-1">Enter a channel URL above to get started.</p>
+            </div>
+
+            <div id="channelsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+        </section>
+
+        <!-- Browse Results -->
+        <section id="channelResultsSection" class="hidden glass-card rounded-2xl p-6 sm:p-8 fade-in">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-gray-200 dark:border-gray-700/30 pb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <i class="fa-solid fa-video text-indigo-500"></i>
+                    <span id="channelResultsTitle">Channel Videos</span>
+                </h2>
+                <button id="btnDownloadSelected" class="inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+                    <i class="fa-solid fa-download mr-1.5"></i>Download Selected (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+            <div id="channelResultsGrid" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+        </section>
+    </main>
+</div>
+
+<!-- ===================== TAB: QUEUE ===================== -->
+<div id="tab-queue" class="tab-content hidden">
+    <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+        <!-- Controls -->
+        <section class="glass-card rounded-2xl p-5 sm:p-6 fade-in">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <label class="text-sm font-medium text-gray-600 dark:text-gray-400">Concurrency:</label>
+                    <div class="flex items-center gap-3">
+                        <input type="range" id="concurrencySlider" min="1" max="5" value="2" class="w-28 h-2 rounded-lg appearance-none cursor-pointer">
+                        <span id="concurrencyValue" class="text-sm font-bold text-indigo-500 dark:text-indigo-400 w-5 text-center tabular-nums">2</span>
+                    </div>
+                </div>
+                <button id="btnCancelAll" class="inline-flex justify-center items-center px-4 py-2 border border-red-500/30 text-sm font-medium rounded-xl text-red-400 bg-red-500/10 hover:bg-red-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 shadow-sm">
+                    <i class="fa-solid fa-ban mr-1.5"></i>Cancel All
+                </button>
+            </div>
+        </section>
+
+        <!-- Filters -->
+        <section class="glass-card rounded-2xl p-4 sm:p-5 fade-in">
+            <div class="flex flex-wrap gap-2" id="queueFilters">
+                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="all">All</button>
+                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="queued">Queued</button>
+                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="downloading">Downloading</button>
+                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="completed">Completed</button>
+                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="failed">Failed</button>
+            </div>
+        </section>
+
+        <!-- Job List -->
+        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
+                <i class="fa-solid fa-list text-indigo-500"></i>
+                Jobs
+            </h2>
+
+            <!-- Loading -->
+            <div id="queueLoading" class="flex flex-col items-center justify-center py-10">
+                <div class="space-y-3 w-full max-w-lg">
+                    <div class="skeleton h-12 w-full"></div>
+                    <div class="skeleton h-12 w-5/6"></div>
+                    <div class="skeleton h-12 w-4/6"></div>
+                </div>
+                <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading queue...</p>
+            </div>
+
+            <!-- Empty -->
+            <div id="queueEmpty" class="hidden flex flex-col items-center justify-center py-12">
+                <svg class="w-32 h-32 mb-6 text-gray-600 dark:text-gray-700" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="16" y="28" width="96" height="72" rx="8" stroke="currentColor" stroke-width="4" fill="none"/>
+                    <line x1="32" y1="48" x2="80" y2="48" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <line x1="32" y1="60" x2="96" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <line x1="32" y1="72" x2="72" y2="72" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <line x1="32" y1="84" x2="56" y2="84" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="100" cy="88" r="18" stroke="currentColor" stroke-width="3" fill="none"/>
+                    <path d="M100 82 V94 M94 88 H106" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                </svg>
+                <p class="text-gray-300 dark:text-gray-500 text-lg font-medium">No jobs in queue</p>
+                <p class="text-gray-500 dark:text-gray-600 text-sm mt-1">Downloads will appear here when started.</p>
+            </div>
+
+            <!-- Table -->
+            <div id="queueTableWrapper" class="hidden overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700/30">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700/30">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
+                            <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                            <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Progress</th>
+                            <th scope="col" class="px-4 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queueBody" class="divide-y divide-gray-200 dark:divide-gray-700/30"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- ===================== TAB: OPTIONS ===================== -->
+<div id="tab-options" class="tab-content hidden">
+    <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+        <!-- Header -->
+        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-indigo-500"></i>
+                        Advanced Options
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">All yt-dlp options organized by category. Changes apply to new downloads.</p>
+                </div>
+                <div class="flex gap-2 shrink-0">
+                    <button id="btnResetOptions" class="inline-flex justify-center items-center px-4 py-2 border border-gray-300 dark:border-gray-700/50 text-sm font-medium rounded-xl text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-sm">
+                        <i class="fa-solid fa-rotate-left mr-1.5"></i>Reset to Defaults
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Options Container -->
+        <div id="optionsContainer" class="space-y-4">
+            <div class="flex flex-col items-center justify-center py-16">
+                <div class="loader mb-4"></div>
+                <p class="text-gray-500 dark:text-gray-400">Loading options...</p>
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="sticky bottom-6 mt-8 flex justify-center z-40">
+            <button id="btnSaveOptions" class="inline-flex justify-center items-center px-10 py-3.5 border border-transparent text-base font-semibold rounded-xl shadow-xl shadow-indigo-500/25 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 hover:scale-105 active:scale-95">
+                <i class="fa-solid fa-floppy-disk mr-2"></i>Save Options
+            </button>
+        </div>
+    </main>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="border-t border-gray-800/50 mt-auto py-6 hero-gradient">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p class="text-sm text-gray-500 dark:text-gray-500">&copy; 2026 YT-DLP Web Interface. Built with <i class="fa-solid fa-heart text-red-500/70 text-xs"></i></p>
+            <div class="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-600">
+                <span class="flex items-center gap-1.5"><i class="fa-brands fa-github"></i> yt-dlp</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-bolt text-indigo-500/70"></i> Powered by yt-dlp</span>
+            </div>
+        </div>
     </div>
+</footer>
 
-    <footer class="bg-gray-800 text-white text-center py-4 text-sm mt-auto">
-        <p>&copy; 2026 YT-DLP Web Interface. Built with Tailwind CSS.</p>
-    </footer>
+<!-- ===== TOAST CONTAINER ===== -->
+<div id="toastContainer" class="fixed top-4 right-4 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none"></div>
 
-    <script src="app.js"></script>
-    <div id="global-tooltip"></div>
+<!-- ===== GLOBAL TOOLTIP ===== -->
+<div id="global-tooltip"></div>
+
+<!-- ===== DARK MODE TOGGLE SCRIPT ===== -->
+<script>
+    (function() {
+        const html = document.documentElement;
+        const toggle = document.getElementById('darkModeToggle');
+        const icon = document.getElementById('darkModeIcon');
+
+        function setDark(isDark) {
+            html.classList.toggle('dark', isDark);
+            localStorage.setItem('darkMode', isDark ? 'true' : 'false');
+            if (icon) {
+                icon.className = isDark ? 'fa-solid fa-moon text-yellow-400' : 'fa-solid fa-sun text-yellow-500';
+            }
+        }
+
+        // Init from localStorage
+        const stored = localStorage.getItem('darkMode');
+        if (stored === 'false') {
+            setDark(false);
+        } else {
+            setDark(true); // default dark
+        }
+
+        if (toggle) {
+            toggle.addEventListener('click', () => {
+                setDark(!html.classList.contains('dark'));
+            });
+        }
+    })();
+</script>
+
+<script src="app.js"></script>
 </body>
 </html>
