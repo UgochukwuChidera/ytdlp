@@ -973,10 +973,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!files || files.length === 0) {
                 if (filesEmpty) filesEmpty.classList.remove('hidden');
+                const cab = document.getElementById('btnClearAllFiles');
+                if (cab) cab.classList.add('hidden');
                 return;
             }
 
             if (filesTableWrapper) filesTableWrapper.classList.remove('hidden');
+            // Add/Clear All button
+            let clearAllBtn = document.getElementById('btnClearAllFiles');
+            if (!clearAllBtn) {
+                clearAllBtn = document.createElement('button');
+                clearAllBtn.id = 'btnClearAllFiles';
+                clearAllBtn.className = 'mb-4 inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-all duration-200';
+                clearAllBtn.innerHTML = '<i class="fa-solid fa-trash-can mr-2"></i>Clear All';
+                clearAllBtn.addEventListener('click', clearAllFiles);
+                filesTableWrapper.parentNode.insertBefore(clearAllBtn, filesTableWrapper);
+            }
+            clearAllBtn.classList.remove('hidden');
             files.forEach(file => {
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-50';
@@ -989,12 +1002,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatFileSize(size)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(date)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <a href="/api/files/${encodeURIComponent(file.name || '')}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
-                            <i class="fa-solid fa-download mr-1.5"></i>Download
-                        </a>
+                        <div class="flex items-center justify-end gap-2">
+                            <a href="/api/files/${encodeURIComponent(file.name || '')}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                                <i class="fa-solid fa-download mr-1.5"></i>Download
+                            </a>
+                            <button class="btn-delete-file px-3 py-1.5 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors" data-filename="${encodeURIComponent(file.name || '')}">
+                                <i class="fa-solid fa-trash-can mr-1"></i>Delete
+                            </button>
+                        </div>
                     </td>
                 `;
                 if (filesBody) filesBody.appendChild(tr);
+                const deleteBtn = tr.querySelector('.btn-delete-file');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', () => {
+                        deleteFile(file.name || '', tr);
+                    });
+                }
             });
         } catch (error) {
             console.error('Files fetch error:', error);
@@ -1006,6 +1030,38 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     };
+
+        const deleteFile = async (filename, rowEl) => {
+            if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
+            try {
+                const response = await fetch(`/api/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    let errMsg = 'Failed to delete file';
+                    try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
+                    throw new Error(errMsg);
+                }
+                showToast(`Deleted "${filename}"`, 'success');
+                rowEl.remove();
+                if (filesBody && filesBody.children.length === 0) {
+                    loadFiles();
+                }
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        };
+
+        const clearAllFiles = async () => {
+            if (!confirm('Delete ALL downloaded files? This cannot be undone.')) return;
+            try {
+                const response = await fetch('/api/files', { method: 'DELETE' });
+                if (!response.ok) throw new Error('Failed to clear files');
+                const result = await response.json();
+                showToast(`Deleted ${result.deleted} file${result.deleted !== 1 ? 's' : ''}`, 'success');
+                loadFiles();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        };
 
     // ======================== CHANNELS TAB ========================
 

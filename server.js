@@ -520,6 +520,43 @@ app.get('/api/files/:filename', (req, res) => {
     res.download(filePath);
 });
 
+app.delete('/api/files/:filename', (req, res) => {
+    const filename = req.params.filename;
+    if (filename.includes('/') || filename.includes('..')) {
+        return res.status(400).json({ error: 'Invalid filename' });
+    }
+    const filePath = path.join(downloadsDir, filename);
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'File not found' });
+    }
+    try {
+        fs.unlinkSync(filePath);
+        res.json({ success: true, message: 'File deleted' });
+    } catch (error) {
+        console.error('File delete error:', error);
+        res.status(500).json({ error: 'Failed to delete file' });
+    }
+});
+
+app.delete('/api/files', (req, res) => {
+    try {
+        const files = fs.readdirSync(downloadsDir);
+        let deleted = 0;
+        for (const file of files) {
+            const filePath = path.join(downloadsDir, file);
+            try {
+                fs.unlinkSync(filePath);
+                deleted++;
+            } catch (e) {
+                // Skip files that can't be deleted (permissions, etc.)
+            }
+        }
+        res.json({ success: true, deleted });
+    } catch (error) {
+        console.error('Clear files error:', error);
+        res.status(500).json({ error: 'Failed to clear files' });
+    }
+});
 
 // ======================== OPTIONS ENDPOINTS ========================
 
