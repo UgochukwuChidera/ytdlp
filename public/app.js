@@ -429,11 +429,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Tab-specific activation logic
-        if (tabId === 'downloads') setTimeout(loadFiles, 300);
-        if (tabId === 'setup') setTimeout(checkSetupStatus, 300);
-        if (tabId === 'channels') setTimeout(loadChannels, 300);
-        if (tabId === 'queue') setTimeout(initQueueSSE, 300);
-        if (tabId === 'options') setTimeout(loadOptions, 300);
+        if (tabId === 'downloads') setTimeout(() => {
+            try { if (typeof loadFiles === 'function') loadFiles(); else throw new Error('loadFiles not defined'); }
+            catch (e) { console.error('Downloads tab init failed:', e); }
+        }, 300);
+        if (tabId === 'setup') setTimeout(() => {
+            try { if (typeof checkSetupStatus === 'function') checkSetupStatus(); else throw new Error('checkSetupStatus not defined'); }
+            catch (e) { console.error('Setup tab init failed:', e); }
+        }, 300);
+        if (tabId === 'channels') setTimeout(() => {
+            try { if (typeof loadChannels === 'function') loadChannels(); else throw new Error('loadChannels not defined'); }
+            catch (e) { console.error('Channels tab init failed:', e); }
+        }, 300);
+        if (tabId === 'queue') setTimeout(() => {
+            try {
+                if (typeof initQueueSSE === 'function') {
+                    initQueueSSE();
+                } else {
+                    throw new Error('initQueueSSE not defined');
+                }
+            } catch (e) {
+                console.error('Queue tab init failed:', e);
+                // Always resolve the loading skeleton
+                const ql = document.getElementById('queueLoading');
+                const qe = document.getElementById('queueEmpty');
+                if (ql) ql.classList.add('hidden');
+                if (qe) qe.classList.remove('hidden');
+            }
+        }, 300);
+        if (tabId === 'options') setTimeout(() => {
+            try { if (typeof loadOptions === 'function') loadOptions(); else throw new Error('loadOptions not defined'); }
+            catch (e) { console.error('Options tab init failed:', e); }
+        }, 300);
     };
 
     tabBtns.forEach(btn => {
