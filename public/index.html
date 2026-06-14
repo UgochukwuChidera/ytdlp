@@ -4,191 +4,374 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YT-DLP Web Interface</title>
-    <script>
-        tailwind = { config: { darkMode: 'class' } };
-    </script>
-    <script src="https://cdn.tailwindcss.com">
-    </script>
+    <script>tailwind = { config: { darkMode: 'class' } };</script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* ===== FONTS & BASE ===== */
-        * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        /* ===== RESET & BASE ===== */
+        *, *::before, *::after { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
         html { scroll-behavior: smooth; }
-
         body {
-            background: #030712;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            background: #030712;
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
         }
-
-        /* Light mode overrides */
-        html:not(.dark) body {
-            background: #f1f5f9;
-        }
+        html:not(.dark) body { background: #f0f4f8; }
+        * { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
 
         /* ===== CUSTOM SCROLLBAR ===== */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
-            background: rgba(99, 102, 241, 0.3);
+            background: rgba(99, 102, 241, 0.25);
             border-radius: 999px;
-            transition: background 0.2s;
         }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.5); }
-        .dark ::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.25); }
-        .dark ::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.4); }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.45); }
+        .dark ::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.2); }
+        .dark ::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.35); }
 
-        /* ===== ANIMATED GRADIENT BG ===== */
-        .hero-gradient {
-            position: relative;
+        /* ===== ANIMATED MESH GRADIENT BACKGROUND ===== */
+        .mesh-gradient {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
             overflow: hidden;
+            pointer-events: none;
         }
-        .hero-gradient::before {
-            content: '';
+        .mesh-gradient .layer {
             position: absolute;
-            top: -50%;
-            left: -50%;
+            inset: -50%;
             width: 200%;
             height: 200%;
-            background: radial-gradient(ellipse at 30% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-                        radial-gradient(ellipse at 70% 50%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
-                        radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
-            animation: gradientShift 12s ease-in-out infinite alternate;
-            pointer-events: none;
-            z-index: 0;
+            mix-blend-mode: normal;
+            opacity: 0.5;
         }
-        @keyframes gradientShift {
-            0% { transform: translate(0, 0) rotate(0deg); }
-            33% { transform: translate(2%, -2%) rotate(1deg); }
-            66% { transform: translate(-1%, 1%) rotate(-1deg); }
-            100% { transform: translate(1%, -1%) rotate(0.5deg); }
+        .mesh-gradient .layer:nth-child(1) {
+            background: radial-gradient(ellipse 60% 50% at 25% 30%, rgba(99, 102, 241, 0.25) 0%, transparent 70%);
+            animation: morphGradient1 18s ease-in-out infinite alternate;
+        }
+        .mesh-gradient .layer:nth-child(2) {
+            background: radial-gradient(ellipse 50% 60% at 75% 40%, rgba(139, 92, 246, 0.2) 0%, transparent 70%);
+            animation: morphGradient2 22s ease-in-out infinite alternate;
+        }
+        .mesh-gradient .layer:nth-child(3) {
+            background: radial-gradient(ellipse 40% 40% at 50% 80%, rgba(0, 240, 255, 0.08) 0%, transparent 60%);
+            animation: morphGradient3 16s ease-in-out infinite alternate;
+        }
+        .mesh-gradient .layer:nth-child(4) {
+            background: radial-gradient(ellipse 40% 30% at 60% 15%, rgba(236, 72, 153, 0.06) 0%, transparent 60%);
+            animation: morphGradient4 20s ease-in-out infinite alternate;
+        }
+        .mesh-gradient .layer:nth-child(5) {
+            background: radial-gradient(ellipse 30% 30% at 40% 60%, rgba(16, 185, 129, 0.04) 0%, transparent 50%);
+            animation: morphGradient1 24s ease-in-out infinite alternate-reverse;
+        }
+        /* Noise texture overlay */
+        .mesh-gradient::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 256px 256px;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .dark .mesh-gradient .layer { opacity: 0.6; }
+
+        @keyframes morphGradient1 {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            33% { transform: translate(3%, -2%) scale(1.05) rotate(2deg); }
+            66% { transform: translate(-2%, 4%) scale(0.95) rotate(-1deg); }
+            100% { transform: translate(1%, -3%) scale(1.02) rotate(1deg); }
+        }
+        @keyframes morphGradient2 {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            33% { transform: translate(-3%, 2%) scale(1.08) rotate(-2deg); }
+            66% { transform: translate(2%, -3%) scale(0.92) rotate(1.5deg); }
+            100% { transform: translate(-1%, 4%) scale(1.03) rotate(-0.5deg); }
+        }
+        @keyframes morphGradient3 {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            50% { transform: translate(4%, 2%) scale(1.1) rotate(3deg); }
+            100% { transform: translate(-3%, -1%) scale(0.9) rotate(-2deg); }
+        }
+        @keyframes morphGradient4 {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            50% { transform: translate(-2%, -3%) scale(0.95) rotate(-1.5deg); }
+            100% { transform: translate(3%, 2%) scale(1.06) rotate(2deg); }
         }
 
-        /* Floating particles */
-        .particles {
-            position: absolute;
+        /* ===== FLOATING PARTICLES ===== */
+        .particles-container {
+            position: fixed;
             inset: 0;
             overflow: hidden;
             pointer-events: none;
             z-index: 0;
         }
-        .particle {
+        .particle-dot {
             position: absolute;
             border-radius: 50%;
-            background: rgba(99, 102, 241, 0.15);
-            animation: float linear infinite;
+            background: rgba(99, 102, 241, 0.12);
+            animation: particleFloat linear infinite;
         }
-        .particle:nth-child(1) { width: 6px; height: 6px; left: 10%; top: 20%; animation-duration: 18s; animation-delay: 0s; }
-        .particle:nth-child(2) { width: 4px; height: 4px; left: 25%; top: 60%; animation-duration: 22s; animation-delay: 2s; background: rgba(139, 92, 246, 0.12); }
-        .particle:nth-child(3) { width: 8px; height: 8px; left: 45%; top: 10%; animation-duration: 20s; animation-delay: 4s; background: rgba(16, 185, 129, 0.1); }
-        .particle:nth-child(4) { width: 5px; height: 5px; left: 65%; top: 70%; animation-duration: 25s; animation-delay: 1s; }
-        .particle:nth-child(5) { width: 7px; height: 7px; left: 80%; top: 30%; animation-duration: 19s; animation-delay: 3s; background: rgba(139, 92, 246, 0.1); }
-        .particle:nth-child(6) { width: 3px; height: 3px; left: 50%; top: 85%; animation-duration: 23s; animation-delay: 5s; background: rgba(16, 185, 129, 0.12); }
-        .particle:nth-child(7) { width: 6px; height: 6px; left: 15%; top: 45%; animation-duration: 21s; animation-delay: 2.5s; }
-        .particle:nth-child(8) { width: 4px; height: 4px; left: 90%; top: 55%; animation-duration: 17s; animation-delay: 4.5s; background: rgba(99, 102, 241, 0.1); }
-        @keyframes float {
-            0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.6; }
-            25% { transform: translateY(-30px) translateX(10px) scale(1.1); opacity: 0.9; }
-            50% { transform: translateY(-10px) translateX(-15px) scale(0.9); opacity: 0.7; }
-            75% { transform: translateY(-40px) translateX(5px) scale(1.05); opacity: 0.8; }
-            100% { transform: translateY(-60px) translateX(-10px) scale(0.95); opacity: 0.4; }
+        .particle-dot:nth-child(1) { width: 5px; height: 5px; left: 8%; top: 15%; animation-duration: 19s; animation-delay: 0s; }
+        .particle-dot:nth-child(2) { width: 3px; height: 3px; left: 22%; top: 55%; animation-duration: 23s; animation-delay: 1.5s; background: rgba(0, 240, 255, 0.1); }
+        .particle-dot:nth-child(3) { width: 7px; height: 7px; left: 38%; top: 8%; animation-duration: 21s; animation-delay: 3s; background: rgba(139, 92, 246, 0.1); }
+        .particle-dot:nth-child(4) { width: 4px; height: 4px; left: 55%; top: 72%; animation-duration: 25s; animation-delay: 0.5s; }
+        .particle-dot:nth-child(5) { width: 6px; height: 6px; left: 72%; top: 25%; animation-duration: 18s; animation-delay: 2s; background: rgba(0, 240, 255, 0.08); }
+        .particle-dot:nth-child(6) { width: 3px; height: 3px; left: 85%; top: 60%; animation-duration: 22s; animation-delay: 4s; background: rgba(139, 92, 246, 0.1); }
+        .particle-dot:nth-child(7) { width: 5px; height: 5px; left: 45%; top: 88%; animation-duration: 20s; animation-delay: 1s; }
+        .particle-dot:nth-child(8) { width: 4px; height: 4px; left: 12%; top: 40%; animation-duration: 24s; animation-delay: 3.5s; background: rgba(0, 240, 255, 0.06); }
+        .particle-dot:nth-child(9) { width: 6px; height: 6px; left: 65%; top: 45%; animation-duration: 17s; animation-delay: 2.5s; background: rgba(139, 92, 246, 0.08); }
+        .particle-dot:nth-child(10) { width: 3px; height: 3px; left: 92%; top: 80%; animation-duration: 26s; animation-delay: 0.8s; }
+        .particle-dot:nth-child(11) { width: 5px; height: 5px; left: 30%; top: 35%; animation-duration: 19s; animation-delay: 4.2s; background: rgba(16, 185, 129, 0.06); }
+        .particle-dot:nth-child(12) { width: 4px; height: 4px; left: 78%; top: 10%; animation-duration: 21s; animation-delay: 1.8s; }
+        .particle-dot:nth-child(13) { width: 7px; height: 7px; left: 50%; top: 50%; animation-duration: 23s; animation-delay: 3.2s; background: rgba(0, 240, 255, 0.07); }
+        .particle-dot:nth-child(14) { width: 3px; height: 3px; left: 18%; top: 75%; animation-duration: 20s; animation-delay: 0.2s; }
+        .particle-dot:nth-child(15) { width: 5px; height: 5px; left: 60%; top: 90%; animation-duration: 18s; animation-delay: 5s; background: rgba(139, 92, 246, 0.09); }
+        .particle-dot:nth-child(16) { width: 4px; height: 4px; left: 40%; top: 20%; animation-duration: 22s; animation-delay: 2.8s; }
+        .particle-dot:nth-child(17) { width: 6px; height: 6px; left: 82%; top: 70%; animation-duration: 25s; animation-delay: 1.2s; background: rgba(16, 185, 129, 0.05); }
+        .particle-dot:nth-child(18) { width: 3px; height: 3px; left: 5%; top: 85%; animation-duration: 19s; animation-delay: 4.5s; }
+        .particle-dot:nth-child(19) { width: 5px; height: 5px; left: 70%; top: 35%; animation-duration: 21s; animation-delay: 0.6s; background: rgba(0, 240, 255, 0.09); }
+        .particle-dot:nth-child(20) { width: 4px; height: 4px; left: 48%; top: 5%; animation-duration: 24s; animation-delay: 3.8s; }
+
+        @keyframes particleFloat {
+            0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.5; }
+            25% { transform: translateY(-25px) translateX(12px) scale(1.15); opacity: 0.9; }
+            50% { transform: translateY(-8px) translateX(-10px) scale(0.85); opacity: 0.6; }
+            75% { transform: translateY(-35px) translateX(8px) scale(1.05); opacity: 0.8; }
+            100% { transform: translateY(-55px) translateX(-5px) scale(0.9); opacity: 0.3; }
+        }
+
+        /* ===== SUBTLE DOT GRID OVERLAY ===== */
+        .dot-grid-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.15;
+            background-image: radial-gradient(rgba(99, 102, 241, 0.12) 1px, transparent 1px);
+            background-size: 32px 32px;
+        }
+        .dark .dot-grid-overlay { opacity: 0.2; }
+
+        /* ===== SIDEBAR ===== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 256px;
+            height: 100vh;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-right: 1px solid rgba(99, 102, 241, 0.08);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s;
+        }
+        html:not(.dark) .sidebar {
+            background: rgba(255, 255, 255, 0.85);
+            border-right: 1px solid rgba(99, 102, 241, 0.1);
+        }
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 55;
+            background: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .sidebar-overlay.open { opacity: 1; pointer-events: auto; }
+
+        /* ===== MAIN CONTENT ===== */
+        .main-content {
+            margin-left: 256px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 1;
+            transition: margin-left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         /* ===== GLASSMORPHISM CARDS ===== */
         .glass-card {
             background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(99, 102, 241, 0.1);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
         }
         .dark .glass-card {
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(99, 102, 241, 0.12);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid rgba(99, 102, 241, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
         }
 
-        /* ===== CARD HOVER LIFT + GLOW ===== */
-        .hover-lift {
-            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+        /* ===== 3D PERSPECTIVE CARD ===== */
+        .card-3d {
+            perspective: 800px;
+            transform-style: preserve-3d;
         }
-        .hover-lift:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
+        .card-3d-inner {
+            transition: transform 0.25s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+        .card-3d-inner:hover {
+            box-shadow: 0 20px 60px rgba(99, 102, 241, 0.2);
             border-color: rgba(99, 102, 241, 0.25);
         }
-        .dark .hover-lift:hover {
-            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.2);
+        .dark .card-3d-inner:hover {
+            box-shadow: 0 20px 60px rgba(99, 102, 241, 0.25);
         }
 
-        /* ===== GLOW BORDER ===== */
-        .glow-border {
+        /* ===== NEON GLOW BORDER ===== */
+        .neon-border {
             position: relative;
         }
-        .glow-border::after {
+        .neon-border::before {
             content: '';
             position: absolute;
             inset: -1px;
             border-radius: inherit;
             padding: 1px;
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.1), rgba(99, 102, 241, 0.3));
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(0, 240, 255, 0.2), rgba(139, 92, 246, 0.4));
             -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
             -webkit-mask-composite: xor;
             mask-composite: exclude;
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.3s ease;
+            transition: opacity 0.4s ease;
         }
-        .glow-border:hover::after { opacity: 1; }
+        .neon-border:hover::before { opacity: 1; }
 
         /* ===== TAB SYSTEM ===== */
         .tab-btn {
-            transition: all 0.25s ease;
             position: relative;
+            transition: all 0.2s ease;
+            cursor: pointer;
         }
-        .tab-btn::after {
+        .tab-btn .tab-active-indicator {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%) scaleY(0);
+            width: 3px;
+            height: 50%;
+            border-radius: 0 3px 3px 0;
+            background: linear-gradient(180deg, #6366f1, #06b6d4);
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .tab-btn.tab-active .tab-active-indicator {
+            transform: translateY(-50%) scaleY(1);
+        }
+        .tab-btn.tab-active {
+            background: rgba(99, 102, 241, 0.08) !important;
+        }
+        .dark .tab-btn.tab-active { background: rgba(99, 102, 241, 0.12) !important; }
+
+        /* ===== TAB BADGE ===== */
+        .tab-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.25rem;
+            height: 1.25rem;
+            padding: 0 0.375rem;
+            font-size: 0.625rem;
+            font-weight: 700;
+            line-height: 1;
+            border-radius: 9999px;
+            background: #ef4444;
+            color: #fff;
+        }
+
+        /* ===== GRADIENT TEXT ===== */
+        .gradient-text {
+            background: linear-gradient(135deg, #818cf8, #06b6d4, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .gradient-text-accent {
+            background: linear-gradient(135deg, #f59e0b, #ef4444);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* ===== GRADIENT BORDER CONTAINER ===== */
+        .gradient-border {
+            position: relative;
+            background-clip: padding-box;
+        }
+        .gradient-border::before {
             content: '';
             position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%) scaleX(0);
-            width: 60%;
-            height: 2.5px;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #6366f1, #8b5cf6);
-            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            inset: 0;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(0, 240, 255, 0.1), rgba(139, 92, 246, 0.3));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
         }
-        .tab-btn.tab-active::after { transform: translateX(-50%) scaleX(1); }
-        .tab-btn.tab-active {
-            color: #818cf8 !important;
-        }
-        .dark .tab-btn.tab-active { color: #a5b4fc !important; }
 
-        /* ===== LOADER ===== */
-        .loader {
-            border: 3px solid rgba(99, 102, 241, 0.15);
-            border-top: 3px solid #6366f1;
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
-            animation: spin 0.8s linear infinite;
+        /* ===== BUTTON PULSE GLOW ===== */
+        .btn-pulse {
+            position: relative;
+            overflow: hidden;
         }
-        .dark .loader { border-color: rgba(99, 102, 241, 0.2); border-top-color: #818cf8; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .btn-pulse::after {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: inherit;
+            background: inherit;
+            z-index: -1;
+            filter: blur(12px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .btn-pulse:hover::after { opacity: 0.6; }
+
+        /* ===== RIPPLE CONTAINER ===== */
+        .ripple-container {
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* ===== LOADER (CONIC GRADIENT) ===== */
+        .loader-conic {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, rgba(99, 102, 241, 0.1), #6366f1, #06b6d4, #a78bfa, rgba(99, 102, 241, 0.1));
+            animation: spinConic 0.8s linear infinite;
+            mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #fff calc(100% - 3px));
+            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #fff calc(100% - 3px));
+        }
+        @keyframes spinConic { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         /* ===== SKELETON SHIMMER ===== */
         .skeleton {
-            background: linear-gradient(90deg, rgba(99, 102, 241, 0.06) 25%, rgba(99, 102, 241, 0.12) 50%, rgba(99, 102, 241, 0.06) 75%);
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.06) 25%, rgba(99, 102, 241, 0.15) 50%, rgba(99, 102, 241, 0.06) 75%);
             background-size: 200% 100%;
             animation: shimmer 1.8s ease-in-out infinite;
             border-radius: 8px;
         }
         .dark .skeleton {
-            background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 25%, rgba(99, 102, 241, 0.18) 50%, rgba(99, 102, 241, 0.08) 75%);
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.07) 25%, rgba(99, 102, 241, 0.2) 50%, rgba(99, 102, 241, 0.07) 75%);
             background-size: 200% 100%;
-            animation: shimmer 1.8s ease-in-out infinite;
         }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
@@ -199,8 +382,8 @@
         .skeleton-card > div:first-child { height: 180px; }
         .skeleton-card > div:last-child { padding: 16px; }
 
-        /* ===== PROGRESS BAR STRIPE ===== */
-        .progress-stripe {
+        /* ===== PROGRESS BAR WITH GLOW ===== */
+        .progress-glow {
             background-image: linear-gradient(45deg,
                 rgba(255, 255, 255, 0.15) 25%,
                 transparent 25%,
@@ -210,21 +393,56 @@
                 transparent 75%,
                 transparent);
             background-size: 1.5rem 1.5rem;
-            animation: progress-stripe 1.2s linear infinite;
+            animation: progressStripe 1.2s linear infinite;
         }
-        @keyframes progress-stripe {
+        @keyframes progressStripe {
             0% { background-position: 1.5rem 0; }
             100% { background-position: 0 0; }
         }
+        .progress-glow::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+            opacity: 0;
+            animation: progressGlowPulse 2s ease-in-out infinite;
+        }
+        @keyframes progressGlowPulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.8; }
+        }
 
-        /* ===== TOAST SLIDE-IN ===== */
+        /* ===== TOAST ===== */
         #toastContainer > div {
-            animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(99, 102, 241, 0.1);
         }
         @keyframes toastSlideIn {
-            from { opacity: 0; transform: translateX(40px) scale(0.95); }
+            from { opacity: 0; transform: translateX(40px) scale(0.92); }
             to { opacity: 1; transform: translateX(0) scale(1); }
         }
+
+        /* ===== FADE IN UP ANIMATION ===== */
+        .fade-in-up {
+            animation: fadeInUp 0.5s ease forwards;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Staggered delays */
+        .stagger-1 { animation-delay: 0.05s; }
+        .stagger-2 { animation-delay: 0.1s; }
+        .stagger-3 { animation-delay: 0.15s; }
+        .stagger-4 { animation-delay: 0.2s; }
+        .stagger-5 { animation-delay: 0.25s; }
+        .stagger-6 { animation-delay: 0.3s; }
+        .stagger-7 { animation-delay: 0.35s; }
+        .stagger-8 { animation-delay: 0.4s; }
 
         /* ===== LINE CLAMP ===== */
         .line-clamp-2 {
@@ -233,55 +451,59 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
-
-        /* ===== TAB BADGE ===== */
-        .tab-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 1.25rem;
-            height: 1.25rem;
-            padding: 0 0.375rem;
-            font-size: 0.65rem;
-            font-weight: 700;
-            line-height: 1;
-            border-radius: 9999px;
+        .line-clamp-1 {
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
-        /* ===== VIDEO CARD OVERLAY ===== */
+        /* ===== VIDEO CARD ===== */
         .video-card-thumb {
             position: relative;
             overflow: hidden;
+            aspect-ratio: 16 / 9;
         }
         .video-card-thumb img {
-            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
-        .video-card-thumb:hover img {
-            transform: scale(1.08);
-        }
+        .video-card-thumb:hover img { transform: scale(1.1); }
         .video-card-thumb .play-overlay {
             position: absolute;
             inset: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(0,0,0,0);
+            background: rgba(0, 0, 0, 0);
             transition: background 0.3s ease;
         }
-        .video-card-thumb:hover .play-overlay {
-            background: rgba(0,0,0,0.35);
-        }
-        .video-card-thumb .play-overlay i {
-            font-size: 2.5rem;
-            color: rgba(255,255,255,0.8);
+        .video-card-thumb:hover .play-overlay { background: rgba(0, 0, 0, 0.4); }
+        .video-card-thumb .play-overlay .play-btn-circle {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             opacity: 0;
             transform: scale(0.7);
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
         }
-        .video-card-thumb:hover .play-overlay i {
+        .video-card-thumb:hover .play-overlay .play-btn-circle {
             opacity: 1;
             transform: scale(1);
+        }
+        .video-card-thumb .play-overlay .play-btn-circle i {
+            color: #fff;
+            font-size: 1.25rem;
+            margin-left: 3px;
         }
         .video-card-thumb .gradient-overlay {
             position: absolute;
@@ -289,8 +511,35 @@
             left: 0;
             right: 0;
             height: 50%;
-            background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.55), transparent);
             pointer-events: none;
+        }
+        .video-card-thumb .duration-badge {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            padding: 2px 8px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #fff;
+            z-index: 2;
+        }
+        .video-card-thumb .quality-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            padding: 2px 7px;
+            background: rgba(99, 102, 241, 0.8);
+            backdrop-filter: blur(4px);
+            border-radius: 6px;
+            font-size: 0.6rem;
+            font-weight: 700;
+            color: #fff;
+            z-index: 2;
+            letter-spacing: 0.02em;
         }
 
         /* ===== CHANNEL CARD ===== */
@@ -298,23 +547,101 @@
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
         }
         .channel-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.12);
+            transform: translateY(-4px);
+            box-shadow: 0 16px 48px rgba(99, 102, 241, 0.15);
             border-color: rgba(99, 102, 241, 0.2);
         }
-        .dark .channel-card:hover {
-            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.18);
+
+        /* ===== TOGGLE SWITCH (iOS-style) ===== */
+        .toggle-switch {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            gap: 10px;
+        }
+        .toggle-switch input { display: none; }
+        .toggle-track {
+            width: 44px;
+            height: 24px;
+            background: #cbd5e1;
+            border-radius: 999px;
+            transition: background 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .dark .toggle-track { background: rgba(51, 65, 85, 0.6); }
+        .toggle-track::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        .toggle-switch input:checked + .toggle-track { background: linear-gradient(135deg, #6366f1, #06b6d4); }
+        .toggle-switch input:checked + .toggle-track::after { transform: translateX(20px); box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3); }
+
+        /* ===== CUSTOM SELECT ===== */
+        .custom-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236366f1' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+        .dark .custom-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23818cf8' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); }
+
+        /* ===== STYLED RANGE SLIDER ===== */
+        input[type="range"].range-gradient {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #6366f1, #06b6d4);
+            outline: none;
+        }
+        input[type="range"].range-gradient::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+            border: 2px solid #6366f1;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        input[type="range"].range-gradient::-webkit-slider-thumb:hover { transform: scale(1.2); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4); }
+        input[type="range"].range-gradient::-moz-range-thumb {
+            width: 20px; height: 20px; border-radius: 50%; background: #fff;
+            cursor: pointer; border: 2px solid #6366f1;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
         }
 
-        /* ===== FORMAT MODAL ===== */
-        #formatModal {
-            transition: opacity 0.2s ease;
+        /* ===== STATUS BADGE WITH DOT ===== */
+        .status-dot {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
-        #formatModal.show { display: flex; }
-        #formatModalContent {
-            transition: transform 0.2s ease;
+        .status-dot::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
         }
-        #formatModal.show #formatModalContent { transform: scale(1); }
+        .status-dot.green::before { background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+        .status-dot.yellow::before { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+        .status-dot.red::before { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+        .status-dot.blue::before { background: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
+        .status-dot.gray::before { background: #64748b; box-shadow: 0 0 8px rgba(100, 116, 139, 0.3); }
 
         /* ===== TOOLTIP ===== */
         #global-tooltip {
@@ -326,7 +653,7 @@
             font-size: 0.8rem;
             line-height: 1.5;
             border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
             pointer-events: none;
             max-width: 320px;
             opacity: 0;
@@ -336,32 +663,52 @@
             white-space: pre-line;
             border: 1px solid rgba(99, 102, 241, 0.15);
         }
+        html:not(.dark) #global-tooltip {
+            background: #1e293b;
+            color: #f1f5f9;
+        }
         #global-tooltip.show { opacity: 1; transform: translateY(0); }
-        #global-tooltip .tooltip-title {
-            font-weight: 600;
-            font-size: 0.85rem;
-            margin-bottom: 4px;
-            color: #fff;
-        }
-        #global-tooltip .tooltip-desc {
-            color: #cbd5e1;
-            font-size: 0.75rem;
-        }
+        #global-tooltip .tooltip-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #fff; }
+        #global-tooltip .tooltip-desc { color: #cbd5e1; font-size: 0.75rem; }
 
-        /* ===== QUEUE FILTER BUTTONS ===== */
+        /* ===== HAMBURGER ===== */
+        .hamburger {
+            width: 24px;
+            height: 18px;
+            position: relative;
+            cursor: pointer;
+            display: none;
+        }
+        .hamburger span {
+            display: block;
+            position: absolute;
+            height: 2px;
+            width: 100%;
+            background: #94a3b8;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+        .hamburger span:nth-child(1) { top: 0; }
+        .hamburger span:nth-child(2) { top: 8px; }
+        .hamburger span:nth-child(3) { top: 16px; }
+        .hamburger.open span:nth-child(1) { top: 8px; transform: rotate(45deg); background: #818cf8; }
+        .hamburger.open span:nth-child(2) { opacity: 0; }
+        .hamburger.open span:nth-child(3) { top: 8px; transform: rotate(-45deg); background: #818cf8; }
+
+        /* ===== FORMAT MODAL ===== */
+        #formatModal {
+            transition: opacity 0.2s ease;
+        }
+        #formatModal.show { display: flex; }
+        #formatModalContent { transition: transform 0.2s ease; }
+        #formatModal.show #formatModalContent { transform: scale(1); }
+
+        /* ===== QUEUE FILTER BTN ===== */
         .queue-filter-btn {
             transition: all 0.2s ease;
         }
 
-        /* ===== TABLE STYLES ===== */
-        .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(51, 65, 85, 0.5); }
-        .dark .bg-gray-50 { background: rgba(30, 41, 59, 0.4); }
-        .dark .text-gray-500 { color: #94a3b8; }
-        .dark .hover\:bg-gray-50:hover { background: rgba(51, 65, 85, 0.3); }
-        .dark .uppercase.tracking-wider { color: #64748b; }
-
         /* ===== DARK MODE OVERRIDES FOR JS-SET ELEMENTS ===== */
-        .dark #statusMessage.rounded-md { backdrop-filter: blur(8px); }
         .dark #statusMessage.bg-red-50 { background: rgba(239, 68, 68, 0.12) !important; border-color: rgba(239, 68, 68, 0.25) !important; }
         .dark #statusMessage.bg-green-50 { background: rgba(16, 185, 129, 0.12) !important; border-color: rgba(16, 185, 129, 0.25) !important; }
         .dark #statusMessage.bg-blue-50 { background: rgba(59, 130, 246, 0.12) !important; border-color: rgba(59, 130, 246, 0.25) !important; }
@@ -374,13 +721,11 @@
         .dark #updateAlert.bg-yellow-50 { background: rgba(245, 158, 11, 0.12) !important; border-color: rgba(245, 158, 11, 0.25) !important; }
         .dark #updateAlert .text-yellow-800 { color: #fcd34d !important; }
 
-        /* Dark table rows created by JS */
         .dark #filesBody tr.hover\:bg-gray-50:hover,
         .dark #queueBody tr.hover\:bg-gray-50:hover { background: rgba(51, 65, 85, 0.3) !important; }
         .dark #filesBody .text-gray-900 { color: #e2e8f0 !important; }
         .dark #queueBody .text-gray-900 { color: #e2e8f0 !important; }
 
-        /* Dynamic queue job status badges */
         .dark .bg-yellow-100 { background: rgba(245, 158, 11, 0.15) !important; }
         .dark .text-yellow-800 { color: #fcd34d !important; }
         .dark .bg-blue-100 { background: rgba(59, 130, 246, 0.15) !important; }
@@ -390,7 +735,6 @@
         .dark .bg-red-100 { background: rgba(239, 68, 68, 0.15) !important; }
         .dark .text-red-800 { color: #fca5a5 !important; }
 
-        /* Channel cards created by JS */
         .dark #channelsGrid > div,
         .dark #channelResultsGrid > div {
             background: rgba(15, 23, 42, 0.6) !important;
@@ -406,7 +750,6 @@
         .dark #channelsGrid .border-red-200 { border-color: rgba(239, 68, 68, 0.2) !important; }
         .dark #channelsGrid .text-red-700 { color: #fca5a5 !important; }
 
-        /* Options sections created by JS */
         .dark #optionsContainer > div {
             background: rgba(15, 23, 42, 0.6) !important;
             border-color: rgba(99, 102, 241, 0.12) !important;
@@ -421,14 +764,13 @@
         .dark #optionsContainer .border-gray-200 { border-color: rgba(51, 65, 85, 0.4) !important; }
         .dark #optionsContainer .border-gray-100 { border-color: rgba(51, 65, 85, 0.2) !important; }
 
-        /* ===== DARK MODE INPUT OVERRIDES ===== */
         .dark input[type="text"],
         .dark input[type="number"],
         .dark input[type="url"],
         .dark select,
         .dark textarea {
             background: rgba(15, 23, 42, 0.7) !important;
-            border-color: rgba(99, 102, 241, 0.2) !important;
+            border-color: rgba(99, 102, 241, 0.15) !important;
             color: #e2e8f0 !important;
         }
         .dark input::placeholder { color: #64748b !important; }
@@ -437,495 +779,576 @@
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
         }
 
-        /* ===== DARK MODE TABLE OVERRIDES ===== */
         .dark table { background: transparent !important; }
         .dark thead { background: rgba(30, 41, 59, 0.4) !important; }
         .dark thead th { color: #94a3b8 !important; }
         .dark tbody tr { background: transparent !important; }
         .dark tbody td { color: #cbd5e1 !important; border-color: rgba(51, 65, 85, 0.3) !important; }
 
-        /* ===== FADE IN ===== */
-        .fade-in { animation: fadeIn 0.4s ease forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* ===== RESPONSIVE NAV ===== */
-        @media (max-width: 640px) {
-            .nav-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-            .nav-scroll::-webkit-scrollbar { display: none; }
-            .tab-btn { font-size: 0.75rem; padding: 0.5rem 0.65rem; }
-            .tab-btn i { margin-right: 0.25rem; }
-        }
-
-        /* ===== SELECT / RANGE STYLING ===== */
         select option { background: #1e293b; color: #e2e8f0; }
-        input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: rgba(99, 102, 241, 0.2); outline: none; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #6366f1; cursor: pointer; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3); transition: transform 0.15s ease; }
-        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
-        input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #6366f1; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3); }
-        .dark input[type="range"] { background: rgba(99, 102, 241, 0.15); }
-        input[type="checkbox"] { accent-color: #6366f1; }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 767px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .hamburger { display: block; }
+        }
+        @media (min-width: 768px) {
+            .sidebar-overlay { display: none !important; }
+        }
     </style>
 </head>
 <body>
 
-<!-- ===== NAVBAR ===== -->
-<nav class="sticky top-0 z-50 border-b border-gray-800/50 hero-gradient" style="background: rgba(3, 7, 18, 0.85); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
-            <!-- Logo -->
-            <div class="flex items-center gap-2.5 shrink-0">
-                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                    <i class="fa-solid fa-cloud-arrow-down text-white text-sm"></i>
-                </div>
-                <span class="text-lg font-bold text-white tracking-tight">YT-DLP <span class="text-indigo-400">Web</span></span>
-            </div>
+<!-- ===== MESH GRADIENT BACKGROUND ===== -->
+<div class="mesh-gradient">
+    <div class="layer"></div>
+    <div class="layer"></div>
+    <div class="layer"></div>
+    <div class="layer"></div>
+    <div class="layer"></div>
+</div>
+<div class="dot-grid-overlay"></div>
+<div class="particles-container">
+    <div class="particle-dot"></div><div class="particle-dot"></div><div class="particle-dot"></div>
+    <div class="particle-dot"></div><div class="particle-dot"></div><div class="particle-dot"></div>
+    <div class="particle-dot"></div><div class="particle-dot"></div><div class="particle-dot"></div>
+    <div class="particle-dot"></div><div class="particle-dot"></div><div class="particle-dot"></div>
+    <div class="particle-dot"></div><div class="particle-dot"></div><div class="particle-dot"></div>
+    <div class="particle-dot"></div><div class="particle-dot"></div><div class="particle-dot"></div>
+    <div class="particle-dot"></div><div class="particle-dot"></div>
+</div>
 
-            <!-- Tabs (center, scrollable) -->
-            <div class="nav-scroll flex gap-0.5 mx-2 flex-1 justify-center">
-                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="download">
-                    <i class="fa-solid fa-download mr-1.5"></i>Download
-                </button>
-                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="setup">
-                    <i class="fa-solid fa-gear mr-1.5"></i>Setup
-                </button>
-                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="downloads">
-                    <i class="fa-solid fa-folder mr-1.5"></i>Downloads
-                </button>
-                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap relative" data-tab="channels">
-                    <i class="fa-solid fa-users mr-1.5"></i>Channels
-                </button>
-                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap relative" data-tab="queue">
-                    <i class="fa-solid fa-list mr-1.5"></i>Queue
-                </button>
-                <button class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors whitespace-nowrap" data-tab="options">
-                    <i class="fa-solid fa-sliders mr-1.5"></i>Options
-                </button>
-            </div>
+<!-- ===== SIDEBAR OVERLAY (mobile) ===== -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-            <!-- Dark Mode Toggle -->
-            <div class="flex items-center shrink-0">
-                <button id="darkModeToggle" class="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-300" aria-label="Toggle dark mode">
-                    <i class="fa-solid fa-moon text-lg" id="darkModeIcon"></i>
-                </button>
-            </div>
+<!-- ===== SIDEBAR ===== -->
+<aside class="sidebar" id="sidebar">
+    <!-- Logo -->
+    <div class="flex items-center gap-3 px-5 pt-6 pb-5 border-b border-gray-700/20 dark:border-gray-700/20">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 flex-shrink-0">
+            <i class="fa-solid fa-cloud-arrow-down text-white text-sm"></i>
+        </div>
+        <div>
+            <span class="text-lg font-extrabold gradient-text tracking-tight">YT-DLP</span>
+            <span class="block text-[10px] font-medium text-gray-500 dark:text-gray-500 tracking-widest uppercase">Web Interface</span>
         </div>
     </div>
-</nav>
 
-<!-- ===================== TAB: DOWNLOAD ===================== -->
-<div id="tab-download" class="tab-content">
-    <header class="relative overflow-hidden hero-gradient bg-gradient-to-br from-gray-900 via-indigo-950/40 to-gray-900 border-b border-gray-800/50 py-14 px-4 sm:px-6 lg:px-8">
-        <div class="particles">
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
+    <!-- Nav Tabs -->
+    <nav class="flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
+        <button class="tab-btn tab-active w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 group" data-tab="download">
+            <span class="tab-active-indicator"></span>
+            <span class="w-8 h-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-400 group-hover:bg-indigo-500/20 transition-all duration-200 flex-shrink-0">
+                <i class="fa-solid fa-download text-sm"></i>
+            </span>
+            <span class="flex-1 text-left">Download</span>
+        </button>
+        <button class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 group" data-tab="setup">
+            <span class="tab-active-indicator"></span>
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:bg-emerald-500/20 transition-all duration-200 flex-shrink-0">
+                <i class="fa-solid fa-toolbox text-sm"></i>
+            </span>
+            <span class="flex-1 text-left">Setup</span>
+        </button>
+        <button class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 group" data-tab="downloads">
+            <span class="tab-active-indicator"></span>
+            <span class="w-8 h-8 rounded-lg bg-blue-500/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:bg-blue-500/20 transition-all duration-200 flex-shrink-0">
+                <i class="fa-solid fa-folder-open text-sm"></i>
+            </span>
+            <span class="flex-1 text-left">Downloads</span>
+        </button>
+        <button class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 group relative" data-tab="channels">
+            <span class="tab-active-indicator"></span>
+            <span class="w-8 h-8 rounded-lg bg-violet-500/10 dark:bg-violet-500/10 flex items-center justify-center text-violet-400 group-hover:bg-violet-500/20 transition-all duration-200 flex-shrink-0">
+                <i class="fa-solid fa-users text-sm"></i>
+            </span>
+            <span class="flex-1 text-left">Channels</span>
+        </button>
+        <button class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 group relative" data-tab="queue">
+            <span class="tab-active-indicator"></span>
+            <span class="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/10 flex items-center justify-center text-amber-400 group-hover:bg-amber-500/20 transition-all duration-200 flex-shrink-0">
+                <i class="fa-solid fa-list-check text-sm"></i>
+            </span>
+            <span class="flex-1 text-left">Queue</span>
+        </button>
+        <button class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 group" data-tab="options">
+            <span class="tab-active-indicator"></span>
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/10 dark:bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-500/20 transition-all duration-200 flex-shrink-0">
+                <i class="fa-solid fa-sliders text-sm"></i>
+            </span>
+            <span class="flex-1 text-left">Options</span>
+        </button>
+    </nav>
+
+    <!-- Bottom: Dark Mode Toggle -->
+    <div class="px-3 py-4 border-t border-gray-700/20 dark:border-gray-700/20">
+        <button id="darkModeToggle" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 group" aria-label="Toggle dark mode">
+            <span class="w-8 h-8 rounded-lg bg-gray-500/10 dark:bg-gray-500/10 flex items-center justify-center text-gray-400 group-hover:bg-gray-500/20 transition-all duration-200 flex-shrink-0">
+                <i class="fa-solid fa-moon text-sm" id="darkModeIcon"></i>
+            </span>
+            <span class="flex-1 text-left" id="darkModeLabel">Dark Mode</span>
+        </button>
+    </div>
+</aside>
+
+<!-- ===== MAIN CONTENT ===== -->
+<div class="main-content">
+
+    <!-- Mobile top bar -->
+    <div class="flex items-center gap-3 px-4 py-3 md:hidden border-b border-gray-800/30 dark:border-gray-800/30 sticky top-0 z-50" style="background: rgba(3, 7, 18, 0.85); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+        <div class="hamburger" id="hamburgerBtn">
+            <span></span><span></span><span></span>
         </div>
-        <div class="max-w-4xl mx-auto text-center relative z-10">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium mb-4">
-                <i class="fa-solid fa-bolt"></i>
-                <span>Ready to download</span>
-            </div>
-            <h1 class="text-3xl sm:text-4xl font-extrabold text-white mb-3 tracking-tight">Download Any Media</h1>
-            <p class="text-gray-400 text-lg mb-8 max-w-2xl mx-auto">Videos, playlists, channels &mdash; paste a URL and go.</p>
-            <div class="glass-card rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col md:flex-row gap-3 max-w-3xl mx-auto">
-                <input type="text" id="urlInput" placeholder="Enter video, playlist, or channel URL" class="flex-1 min-w-0 block w-full px-5 py-3.5 rounded-xl border-0 bg-gray-900/60 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-base shadow-sm" />
-                <button id="btnMetadata" class="inline-flex justify-center items-center px-6 py-3.5 border border-transparent text-base font-semibold rounded-xl shadow-lg shadow-indigo-500/20 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap">
-                    <i class="fa-solid fa-magnifying-glass mr-2"></i>Fetch Metadata
-                </button>
-                <button id="btnScrape" class="inline-flex justify-center items-center px-6 py-3.5 border border-indigo-500/30 text-base font-semibold rounded-xl text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap">
-                    <i class="fa-solid fa-list mr-2"></i>Scrape Playlist
-                </button>
-            </div>
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 flex-shrink-0">
+            <i class="fa-solid fa-cloud-arrow-down text-white text-xs"></i>
         </div>
-    </header>
+        <span class="text-base font-bold gradient-text tracking-tight">YT-DLP</span>
+    </div>
 
-    <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-        <!-- Download Settings -->
-        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
-                <i class="fa-solid fa-sliders text-indigo-500"></i>
-                Download Settings
-            </h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Quality</label>
-                    <select id="qualitySelect" class="mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
-                        <option value="best">Best Available</option>
-                        <option value="1080p">1080p</option>
-                        <option value="720p">720p</option>
-                        <option value="480p">480p</option>
-                    </select>
+    <!-- ===================== TAB: DOWNLOAD ===================== -->
+    <div id="tab-download" class="tab-content">
+        <header class="relative overflow-hidden border-b border-gray-800/30 dark:border-gray-800/30 py-12 px-4 sm:px-8">
+            <div class="max-w-5xl mx-auto text-center relative z-10">
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-5 tracking-wide uppercase">
+                    <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+                    Ready to download
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Format</label>
-                    <select id="formatSelect" class="mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
-                        <option value="mp4">MP4</option>
-                        <option value="webm">WebM</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Audio Format</label>
-                    <select id="audioFormatSelect" class="mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
-                        <option value="">None (Video)</option>
-                        <option value="mp3">MP3</option>
-                        <option value="m4a">M4A</option>
-                        <option value="opus">Opus</option>
-                        <option value="flac">FLAC</option>
-                        <option value="wav">WAV</option>
-                    </select>
-                </div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Output Template</label>
-                    <input type="text" id="outputTemplateInput" placeholder="%(title)s.%(ext)s" class="mt-1 block w-full px-4 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
-                </div>
-                <div class="flex items-end">
-                    <div class="flex items-center gap-4 flex-wrap">
-                        <label class="relative inline-flex items-center cursor-pointer gap-3">
-                            <input id="audioOnlyToggle" type="checkbox" class="sr-only peer">
-                            <div class="w-11 h-6 bg-gray-300 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 shadow-sm"></div>
-                            <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Audio Only (MP3)</span>
-                        </label>
-                        <button id="btnFormatList" class="inline-flex justify-center items-center px-4 py-2.5 border border-gray-300 dark:border-gray-700/50 text-sm font-medium rounded-xl text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-sm">
-                            <i class="fa-solid fa-list mr-1.5"></i>Show Formats
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Status Message -->
-        <div id="statusMessage" class="hidden rounded-xl p-5 transition-all duration-300">
-            <div class="flex items-start gap-3">
-                <div class="flex-shrink-0 mt-0.5" id="statusIcon"></div>
-                <div class="flex-1">
-                    <p class="text-sm font-medium" id="statusText"></p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Loading Indicator -->
-        <div id="loadingIndicator" class="hidden flex-col items-center justify-center py-16">
-            <div class="loader mb-5"></div>
-            <p class="text-gray-400 text-lg" id="loadingText">Processing...</p>
-        </div>
-
-        <!-- Results -->
-        <div id="resultsContainer" class="hidden">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2" id="resultsTitle">
-                <i class="fa-solid fa-film text-indigo-500"></i>
-                Results
-            </h2>
-            <div id="resultsGrid" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
-        </div>
-    </main>
-</div>
-
-<!-- ===================== TAB: SETUP ===================== -->
-<div id="tab-setup" class="tab-content hidden">
-    <main class="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-        <div class="glass-card rounded-2xl p-6 sm:p-8 mb-8 fade-in">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-                <i class="fa-solid fa-toolbox text-indigo-500"></i>
-                Setup Dependencies
-            </h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Download and install yt-dlp and ffmpeg required for video processing.</p>
-
-            <!-- Update Available Alert -->
-            <div id="updateAlert" class="hidden rounded-xl p-4 mb-6 border" style="background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.25);">
-                <div class="flex items-start gap-3">
-                    <div class="flex-shrink-0"><i class="fa-solid fa-triangle-exclamation text-amber-400 text-lg"></i></div>
-                    <div class="flex-1">
-                        <p class="text-sm font-medium text-amber-700 dark:text-amber-300" id="updateAlertText">An update is available for yt-dlp.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-3">
-                <button id="btnSetupDownload" class="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-semibold rounded-xl shadow-lg shadow-emerald-500/20 text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                    <i class="fa-solid fa-download mr-2"></i>Download yt-dlp & ffmpeg
-                </button>
-            </div>
-        </div>
-
-        <!-- Setup Progress -->
-        <div id="setupProgress" class="hidden space-y-6 glass-card rounded-2xl p-6 sm:p-8 fade-in">
-            <div>
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300"><i class="fa-brands fa-youtube mr-1.5 text-red-500"></i>yt-dlp</span>
-                    <span class="text-sm text-gray-500 dark:text-gray-400" id="ytdlpStatus">Waiting...</span>
-                </div>
-                <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-3 overflow-hidden">
-                    <div id="ytdlpBar" class="h-3 rounded-full transition-all duration-500 ease-out progress-stripe bg-gradient-to-r from-indigo-600 to-violet-600" style="width: 0%"></div>
-                </div>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5" id="ytdlpPercent">0%</p>
-            </div>
-            <div>
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300"><i class="fa-solid fa-video mr-1.5 text-emerald-500"></i>ffmpeg</span>
-                    <span class="text-sm text-gray-500 dark:text-gray-400" id="ffmpegStatus">Waiting...</span>
-                </div>
-                <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-3 overflow-hidden">
-                    <div id="ffmpegBar" class="h-3 rounded-full transition-all duration-500 ease-out progress-stripe bg-gradient-to-r from-emerald-500 to-teal-500" style="width: 0%"></div>
-                </div>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5" id="ffmpegPercent">0%</p>
-            </div>
-        </div>
-
-        <!-- Setup Complete -->
-        <div id="setupComplete" class="hidden rounded-xl p-5 mt-6 border fade-in" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.25);">
-            <div class="flex items-start gap-3">
-                <div class="flex-shrink-0"><i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i></div>
-                <div class="flex-1"><p class="text-sm font-medium text-emerald-700 dark:text-emerald-300">Setup complete! All dependencies are ready.</p></div>
-            </div>
-        </div>
-    </main>
-</div>
-
-<!-- ===================== TAB: DOWNLOADS ===================== -->
-<div id="tab-downloads" class="tab-content hidden">
-    <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700/30 pb-4">
-                <i class="fa-solid fa-folder-open text-indigo-500"></i>
-                Downloaded Files
-            </h2>
-
-            <!-- Loading -->
-            <div id="filesLoading" class="flex flex-col items-center justify-center py-16">
-                <div class="skeleton-card w-full max-w-md space-y-4">
-                    <div class="skeleton h-12 w-full"></div>
-                    <div class="skeleton h-12 w-5/6"></div>
-                    <div class="skeleton h-12 w-4/6"></div>
-                    <div class="skeleton h-12 w-3/6"></div>
-                </div>
-                <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading files...</p>
-            </div>
-
-            <!-- Empty State -->
-            <div id="filesEmpty" class="hidden flex flex-col items-center justify-center py-16">
-                <svg class="w-32 h-32 mb-6 text-gray-600 dark:text-gray-700" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="20" y="28" width="88" height="76" rx="8" stroke="currentColor" stroke-width="4" fill="none"/>
-                    <path d="M52 28 V20 A4 4 0 0 1 56 16 H72 A4 4 0 0 1 76 20 V28" stroke="currentColor" stroke-width="4" fill="none"/>
-                    <circle cx="64" cy="80" r="12" stroke="currentColor" stroke-width="3" fill="none"/>
-                    <path d="M64 74 V86 M58 80 H70" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M40 48 H60 M40 56 H52" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
-                </svg>
-                <p class="text-gray-300 dark:text-gray-500 text-lg font-medium">No downloads yet</p>
-                <p class="text-gray-500 dark:text-gray-600 text-sm mt-1">Downloaded files will appear here.</p>
-            </div>
-
-            <!-- Table -->
-            <div id="filesTableWrapper" class="hidden overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700/30">
-                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700/30">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filename</th>
-                            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Size</th>
-                            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                            <th scope="col" class="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="filesBody" class="divide-y divide-gray-200 dark:divide-gray-700/30"></tbody>
-                </table>
-            </div>
-        </section>
-    </main>
-</div>
-
-<!-- ===================== TAB: CHANNELS ===================== -->
-<div id="tab-channels" class="tab-content hidden">
-    <main class="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-        <!-- Subscribe -->
-        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
-                <i class="fa-solid fa-users text-indigo-500"></i>
-                Subscribed Channels
-            </h2>
-            <div class="flex flex-col sm:flex-row gap-3 mb-6">
-                <input type="text" id="channelUrlInput" placeholder="Paste a channel URL like youtube.com/@ChannelName" class="flex-1 min-w-0 block w-full px-4 py-2.5 rounded-xl border-0 bg-gray-100 dark:bg-gray-800/50 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-sm shadow-sm" />
-                <button id="btnSubscribe" class="inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap">
-                    <i class="fa-solid fa-plus mr-1.5"></i>Subscribe
-                </button>
-            </div>
-
-            <!-- Loading -->
-            <div id="channelsLoading" class="hidden flex-col items-center justify-center py-10">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-4xl">
-                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
-                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
-                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
-                    <div class="skeleton-card"><div class="skeleton h-40"></div></div>
-                </div>
-                <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading channels...</p>
-            </div>
-
-            <!-- Empty -->
-            <div id="channelsEmpty" class="hidden flex flex-col items-center justify-center py-12">
-                <svg class="w-32 h-32 mb-6 text-gray-600 dark:text-gray-700" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="64" cy="48" r="18" stroke="currentColor" stroke-width="4" fill="none"/>
-                    <path d="M30 104 C30 84 45 72 64 72 C83 72 98 84 98 104" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/>
-                    <path d="M85 32 L98 22 L92 36 L105 42 L92 48 L98 62 L85 52 L72 62 L78 48 L65 42 L78 36 L72 22 L85 32Z" stroke="currentColor" stroke-width="2.5" fill="none" opacity="0.3" transform="translate(0, 10) scale(0.6)"/>
-                </svg>
-                <p class="text-gray-300 dark:text-gray-500 text-lg font-medium">No channels subscribed yet</p>
-                <p class="text-gray-500 dark:text-gray-600 text-sm mt-1">Enter a channel URL above to get started.</p>
-            </div>
-
-            <div id="channelsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
-        </section>
-
-        <!-- Browse Results -->
-        <section id="channelResultsSection" class="hidden glass-card rounded-2xl p-6 sm:p-8 fade-in">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-gray-200 dark:border-gray-700/30 pb-4">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <i class="fa-solid fa-video text-indigo-500"></i>
-                    <span id="channelResultsTitle">Channel Videos</span>
-                </h2>
-                <button id="btnDownloadSelected" class="inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
-                    <i class="fa-solid fa-download mr-1.5"></i>Download Selected (<span id="selectedCount">0</span>)
-                </button>
-            </div>
-            <div id="channelResultsGrid" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
-        </section>
-    </main>
-</div>
-
-<!-- ===================== TAB: QUEUE ===================== -->
-<div id="tab-queue" class="tab-content hidden">
-    <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-6">
-        <!-- Controls -->
-        <section class="glass-card rounded-2xl p-5 sm:p-6 fade-in">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div class="flex items-center gap-4">
-                    <label class="text-sm font-medium text-gray-600 dark:text-gray-400">Concurrency:</label>
-                    <div class="flex items-center gap-3">
-                        <input type="range" id="concurrencySlider" min="1" max="5" value="2" class="w-28 h-2 rounded-lg appearance-none cursor-pointer">
-                        <span id="concurrencyValue" class="text-sm font-bold text-indigo-500 dark:text-indigo-400 w-5 text-center tabular-nums">2</span>
-                    </div>
-                </div>
-                <button id="btnCancelAll" class="inline-flex justify-center items-center px-4 py-2 border border-red-500/30 text-sm font-medium rounded-xl text-red-400 bg-red-500/10 hover:bg-red-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 shadow-sm">
-                    <i class="fa-solid fa-ban mr-1.5"></i>Cancel All
-                </button>
-            </div>
-        </section>
-
-        <!-- Filters -->
-        <section class="glass-card rounded-2xl p-4 sm:p-5 fade-in">
-            <div class="flex flex-wrap gap-2" id="queueFilters">
-                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="all">All</button>
-                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="queued">Queued</button>
-                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="downloading">Downloading</button>
-                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="completed">Completed</button>
-                <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="failed">Failed</button>
-            </div>
-        </section>
-
-        <!-- Job List -->
-        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
-                <i class="fa-solid fa-list text-indigo-500"></i>
-                Jobs
-            </h2>
-
-            <!-- Loading -->
-            <div id="queueLoading" class="flex flex-col items-center justify-center py-10">
-                <div class="space-y-3 w-full max-w-lg">
-                    <div class="skeleton h-12 w-full"></div>
-                    <div class="skeleton h-12 w-5/6"></div>
-                    <div class="skeleton h-12 w-4/6"></div>
-                </div>
-                <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading queue...</p>
-            </div>
-
-            <!-- Empty -->
-            <div id="queueEmpty" class="hidden flex flex-col items-center justify-center py-12">
-                <svg class="w-32 h-32 mb-6 text-gray-600 dark:text-gray-700" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="16" y="28" width="96" height="72" rx="8" stroke="currentColor" stroke-width="4" fill="none"/>
-                    <line x1="32" y1="48" x2="80" y2="48" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                    <line x1="32" y1="60" x2="96" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                    <line x1="32" y1="72" x2="72" y2="72" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                    <line x1="32" y1="84" x2="56" y2="84" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                    <circle cx="100" cy="88" r="18" stroke="currentColor" stroke-width="3" fill="none"/>
-                    <path d="M100 82 V94 M94 88 H106" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-                </svg>
-                <p class="text-gray-300 dark:text-gray-500 text-lg font-medium">No jobs in queue</p>
-                <p class="text-gray-500 dark:text-gray-600 text-sm mt-1">Downloads will appear here when started.</p>
-            </div>
-
-            <!-- Table -->
-            <div id="queueTableWrapper" class="hidden overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700/30">
-                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700/30">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
-                            <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                            <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Progress</th>
-                            <th scope="col" class="px-4 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="queueBody" class="divide-y divide-gray-200 dark:divide-gray-700/30"></tbody>
-                </table>
-            </div>
-        </section>
-    </main>
-</div>
-
-<!-- ===================== TAB: OPTIONS ===================== -->
-<div id="tab-options" class="tab-content hidden">
-    <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-6">
-        <!-- Header -->
-        <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <i class="fa-solid fa-sliders text-indigo-500"></i>
-                        Advanced Options
-                    </h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">All yt-dlp options organized by category. Changes apply to new downloads.</p>
-                </div>
-                <div class="flex gap-2 shrink-0">
-                    <button id="btnResetOptions" class="inline-flex justify-center items-center px-4 py-2 border border-gray-300 dark:border-gray-700/50 text-sm font-medium rounded-xl text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-sm">
-                        <i class="fa-solid fa-rotate-left mr-1.5"></i>Reset to Defaults
+                <h1 class="text-4xl sm:text-5xl font-extrabold text-white mb-3 tracking-tight leading-[1.1]">
+                    Download <span class="gradient-text">Any Media</span>
+                </h1>
+                <p class="text-gray-400 text-lg mb-9 max-w-xl mx-auto leading-relaxed">Videos, playlists, channels &mdash; just paste a URL and go.</p>
+                <div class="glass-card rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col md:flex-row gap-3 max-w-3xl mx-auto neon-border">
+                    <input type="text" id="urlInput" placeholder="Enter video, playlist, or channel URL..." class="flex-1 min-w-0 block w-full px-5 py-3.5 rounded-xl border-0 bg-gray-900/60 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-base shadow-sm" />
+                    <button id="btnMetadata" class="ripple-container inline-flex justify-center items-center px-6 py-3.5 border border-transparent text-base font-semibold rounded-xl shadow-lg shadow-indigo-500/25 text-white bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 bg-[length:200%] hover:bg-right-top hover:from-indigo-500 hover:via-violet-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 whitespace-nowrap btn-pulse">
+                        <i class="fa-solid fa-magnifying-glass mr-2"></i>Fetch Metadata
+                    </button>
+                    <button id="btnScrape" class="ripple-container inline-flex justify-center items-center px-6 py-3.5 border border-indigo-500/30 text-base font-semibold rounded-xl text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap">
+                        <i class="fa-solid fa-list mr-2"></i>Scrape Playlist
                     </button>
                 </div>
             </div>
-        </section>
+        </header>
 
-        <!-- Options Container -->
-        <div id="optionsContainer" class="space-y-4">
-            <div class="flex flex-col items-center justify-center py-16">
-                <div class="loader mb-4"></div>
-                <p class="text-gray-500 dark:text-gray-400">Loading options...</p>
+        <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+            <!-- Download Settings -->
+            <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in-up">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
+                    <span class="w-7 h-7 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs flex-shrink-0"><i class="fa-solid fa-sliders"></i></span>
+                    Download Settings
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Quality</label>
+                        <select id="qualitySelect" class="custom-select mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
+                            <option value="best">Best Available</option>
+                            <option value="1080p">1080p</option>
+                            <option value="720p">720p</option>
+                            <option value="480p">480p</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Format</label>
+                        <select id="formatSelect" class="custom-select mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
+                            <option value="mp4">MP4</option>
+                            <option value="webm">WebM</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Audio Format</label>
+                        <select id="audioFormatSelect" class="custom-select mt-1 block w-full pl-3 pr-10 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
+                            <option value="">None (Video)</option>
+                            <option value="mp3">MP3</option>
+                            <option value="m4a">M4A</option>
+                            <option value="opus">Opus</option>
+                            <option value="flac">FLAC</option>
+                            <option value="wav">WAV</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Output Template</label>
+                        <input type="text" id="outputTemplateInput" placeholder="%(title)s.%(ext)s" class="mt-1 block w-full px-4 py-2.5 text-sm border-gray-300 dark:border-gray-700/50 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-xl border shadow-sm transition-all duration-200">
+                    </div>
+                    <div class="flex items-end">
+                        <div class="flex items-center gap-4 flex-wrap">
+                            <label class="toggle-switch">
+                                <input id="audioOnlyToggle" type="checkbox">
+                                <span class="toggle-track"></span>
+                                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Audio Only (MP3)</span>
+                            </label>
+                            <button id="btnFormatList" class="ripple-container inline-flex justify-center items-center px-4 py-2.5 border border-gray-300 dark:border-gray-700/50 text-sm font-medium rounded-xl text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-sm">
+                                <i class="fa-solid fa-list mr-1.5"></i>Show Formats
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status Message -->
+            <div id="statusMessage" class="hidden rounded-xl p-5 transition-all duration-300 glass-card">
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0 mt-0.5" id="statusIcon"></div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium" id="statusText"></p>
+                    </div>
+                </div>
             </div>
-        </div>
 
-        <!-- Save Button -->
-        <div class="sticky bottom-6 mt-8 flex justify-center z-40">
-            <button id="btnSaveOptions" class="inline-flex justify-center items-center px-10 py-3.5 border border-transparent text-base font-semibold rounded-xl shadow-xl shadow-indigo-500/25 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 hover:scale-105 active:scale-95">
-                <i class="fa-solid fa-floppy-disk mr-2"></i>Save Options
-            </button>
-        </div>
-    </main>
-</div>
-
-<!-- ===== FOOTER ===== -->
-<footer class="border-t border-gray-800/50 mt-auto py-6 hero-gradient">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p class="text-sm text-gray-500 dark:text-gray-500">&copy; 2026 YT-DLP Web Interface. Built with <i class="fa-solid fa-heart text-red-500/70 text-xs"></i></p>
-            <div class="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-600">
-                <span class="flex items-center gap-1.5"><i class="fa-brands fa-github"></i> yt-dlp</span>
-                <span class="flex items-center gap-1.5"><i class="fa-solid fa-bolt text-indigo-500/70"></i> Powered by yt-dlp</span>
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="hidden flex-col items-center justify-center py-16 fade-in-up">
+                <div class="loader-conic mb-5"></div>
+                <p class="text-gray-400 text-lg" id="loadingText">Processing...</p>
             </div>
-        </div>
+
+            <!-- Results -->
+            <div id="resultsContainer" class="hidden">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2" id="resultsTitle">
+                    <span class="w-8 h-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-sm flex-shrink-0"><i class="fa-solid fa-film"></i></span>
+                    Results
+                </h2>
+                <div id="resultsGrid" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+            </div>
+        </main>
     </div>
-</footer>
+
+    <!-- ===================== TAB: SETUP ===================== -->
+    <div id="tab-setup" class="tab-content hidden">
+        <main class="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+            <div class="glass-card rounded-2xl p-6 sm:p-8 mb-8 fade-in-up gradient-border">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+                    <span class="w-7 h-7 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-400 text-xs flex-shrink-0"><i class="fa-solid fa-toolbox"></i></span>
+                    Setup Dependencies
+                </h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Download and install yt-dlp and ffmpeg required for video processing.</p>
+
+                <!-- Update Available Alert -->
+                <div id="updateAlert" class="hidden rounded-xl p-4 mb-6 border" style="background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.25);">
+                    <div class="flex items-start gap-3">
+                        <div class="flex-shrink-0"><i class="fa-solid fa-triangle-exclamation text-amber-400 text-lg"></i></div>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-amber-700 dark:text-amber-300" id="updateAlertText">An update is available for yt-dlp.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <button id="btnSetupDownload" class="ripple-container inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-semibold rounded-xl shadow-lg shadow-emerald-500/25 text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed btn-pulse">
+                        <i class="fa-solid fa-download mr-2"></i>Download yt-dlp &amp; ffmpeg
+                    </button>
+                </div>
+            </div>
+
+            <!-- Setup Progress -->
+            <div id="setupProgress" class="hidden space-y-6 glass-card rounded-2xl p-6 sm:p-8 fade-in-up">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5"><i class="fa-brands fa-youtube text-red-500"></i> yt-dlp</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400" id="ytdlpStatus">Waiting...</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-3 overflow-hidden relative">
+                        <div id="ytdlpBar" class="h-3 rounded-full transition-all duration-500 ease-out progress-glow relative bg-gradient-to-r from-indigo-600 to-violet-600" style="width: 0%"></div>
+                    </div>
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5" id="ytdlpPercent">0%</p>
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5"><i class="fa-solid fa-video text-emerald-500"></i> ffmpeg</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400" id="ffmpegStatus">Waiting...</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-3 overflow-hidden relative">
+                        <div id="ffmpegBar" class="h-3 rounded-full transition-all duration-500 ease-out progress-glow relative bg-gradient-to-r from-emerald-500 to-teal-500" style="width: 0%"></div>
+                    </div>
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5" id="ffmpegPercent">0%</p>
+                </div>
+            </div>
+
+            <!-- Setup Complete -->
+            <div id="setupComplete" class="hidden rounded-xl p-5 mt-6 border fade-in-up" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.25);">
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0"><i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i></div>
+                    <div class="flex-1"><p class="text-sm font-medium text-emerald-700 dark:text-emerald-300">Setup complete! All dependencies are ready.</p></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===================== TAB: DOWNLOADS ===================== -->
+    <div id="tab-downloads" class="tab-content hidden">
+        <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+            <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in-up gradient-border">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700/30 pb-4">
+                    <span class="w-7 h-7 rounded-lg bg-blue-500/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-400 text-xs flex-shrink-0"><i class="fa-solid fa-folder-open"></i></span>
+                    Downloaded Files
+                </h2>
+
+                <!-- Loading -->
+                <div id="filesLoading" class="flex flex-col items-center justify-center py-16">
+                    <div class="skeleton-card w-full max-w-md space-y-4">
+                        <div class="skeleton h-12 w-full"></div>
+                        <div class="skeleton h-12 w-5/6"></div>
+                        <div class="skeleton h-12 w-4/6"></div>
+                        <div class="skeleton h-12 w-3/6"></div>
+                    </div>
+                    <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading files...</p>
+                </div>
+
+                <!-- Empty State -->
+                <div id="filesEmpty" class="hidden flex flex-col items-center justify-center py-16">
+                    <svg class="w-36 h-36 mb-6" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="empty1" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#06b6d4"/>
+                            </linearGradient>
+                        </defs>
+                        <rect x="20" y="28" width="88" height="76" rx="8" stroke="url(#empty1)" stroke-width="3" fill="none" opacity="0.6"/>
+                        <path d="M52 28 V20 A4 4 0 0 1 56 16 H72 A4 4 0 0 1 76 20 V28" stroke="url(#empty1)" stroke-width="3" fill="none" opacity="0.6"/>
+                        <circle cx="64" cy="80" r="12" stroke="url(#empty1)" stroke-width="2.5" fill="none" opacity="0.6"/>
+                        <path d="M64 74 V86 M58 80 H70" stroke="url(#empty1)" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+                        <path d="M40 48 H60 M40 56 H52" stroke="url(#empty1)" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+                        <g opacity="0.15">
+                            <circle cx="100" cy="32" r="3" fill="#6366f1"/>
+                            <circle cx="110" cy="45" r="2" fill="#06b6d4"/>
+                            <circle cx="95" cy="50" r="1.5" fill="#a78bfa"/>
+                        </g>
+                    </svg>
+                    <p class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 text-xl font-bold">No downloads yet</p>
+                    <p class="text-gray-500 dark:text-gray-500 text-sm mt-1">Downloaded files will appear here.</p>
+                </div>
+
+                <!-- Table -->
+                <div id="filesTableWrapper" class="hidden overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700/30">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700/30">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filename</th>
+                                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Size</th>
+                                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                                <th scope="col" class="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="filesBody" class="divide-y divide-gray-200 dark:divide-gray-700/30"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ===================== TAB: CHANNELS ===================== -->
+    <div id="tab-channels" class="tab-content hidden">
+        <main class="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+            <!-- Subscribe -->
+            <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in-up gradient-border">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
+                    <span class="w-7 h-7 rounded-lg bg-violet-500/10 dark:bg-violet-500/10 flex items-center justify-center text-violet-400 text-xs flex-shrink-0"><i class="fa-solid fa-users"></i></span>
+                    Subscribed Channels
+                </h2>
+                <div class="flex flex-col sm:flex-row gap-3 mb-6">
+                    <input type="text" id="channelUrlInput" placeholder="Paste a channel URL like youtube.com/@ChannelName" class="flex-1 min-w-0 block w-full px-4 py-2.5 rounded-xl border-0 bg-gray-100 dark:bg-gray-800/50 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-sm shadow-sm" />
+                    <button id="btnSubscribe" class="ripple-container inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/25 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 whitespace-nowrap btn-pulse">
+                        <i class="fa-solid fa-plus mr-1.5"></i>Subscribe
+                    </button>
+                </div>
+
+                <!-- Loading -->
+                <div id="channelsLoading" class="hidden flex-col items-center justify-center py-10">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-4xl">
+                        <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                        <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                        <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                        <div class="skeleton-card"><div class="skeleton h-40"></div></div>
+                    </div>
+                    <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading channels...</p>
+                </div>
+
+                <!-- Empty -->
+                <div id="channelsEmpty" class="hidden flex flex-col items-center justify-center py-12">
+                    <svg class="w-36 h-36 mb-6" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="chEmpty" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6366f1"/>
+                            </linearGradient>
+                        </defs>
+                        <circle cx="64" cy="48" r="18" stroke="url(#chEmpty)" stroke-width="3.5" fill="none" opacity="0.6"/>
+                        <path d="M30 104 C30 84 45 72 64 72 C83 72 98 84 98 104" stroke="url(#chEmpty)" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+                        <g opacity="0.2">
+                            <path d="M85 32 L98 22 L92 36 L105 42 L92 48 L98 62 L85 52 L72 62 L78 48 L65 42 L78 36 L72 22 L85 32Z" stroke="url(#chEmpty)" stroke-width="2" fill="none" transform="translate(0, 10) scale(0.5)"/>
+                        </g>
+                        <g opacity="0.12">
+                            <circle cx="20" cy="20" r="2" fill="#a78bfa"/>
+                            <circle cx="108" cy="16" r="1.5" fill="#6366f1"/>
+                            <circle cx="115" cy="80" r="2" fill="#06b6d4"/>
+                            <circle cx="18" cy="95" r="1.5" fill="#a78bfa"/>
+                        </g>
+                    </svg>
+                    <p class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400 text-xl font-bold">No channels subscribed yet</p>
+                    <p class="text-gray-500 dark:text-gray-500 text-sm mt-1">Enter a channel URL above to get started.</p>
+                </div>
+
+                <div id="channelsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+            </section>
+
+            <!-- Browse Results -->
+            <section id="channelResultsSection" class="hidden glass-card rounded-2xl p-6 sm:p-8 fade-in-up gradient-border">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-gray-200 dark:border-gray-700/30 pb-4">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs flex-shrink-0"><i class="fa-solid fa-video"></i></span>
+                        <span id="channelResultsTitle">Channel Videos</span>
+                    </h2>
+                    <button id="btnDownloadSelected" class="ripple-container inline-flex justify-center items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/25 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap btn-pulse">
+                        <i class="fa-solid fa-download mr-1.5"></i>Download Selected (<span id="selectedCount">0</span>)
+                    </button>
+                </div>
+                <div id="channelResultsGrid" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ===================== TAB: QUEUE ===================== -->
+    <div id="tab-queue" class="tab-content hidden">
+        <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+            <!-- Controls -->
+            <section class="glass-card rounded-2xl p-5 sm:p-6 fade-in-up gradient-border">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <label class="text-sm font-medium text-gray-600 dark:text-gray-400">Concurrency:</label>
+                        <div class="flex items-center gap-3">
+                            <input type="range" id="concurrencySlider" min="1" max="5" value="2" class="range-gradient w-28">
+                            <span id="concurrencyValue" class="text-sm font-bold text-indigo-500 dark:text-indigo-400 w-5 text-center tabular-nums">2</span>
+                        </div>
+                    </div>
+                    <button id="btnCancelAll" class="ripple-container inline-flex justify-center items-center px-4 py-2 border border-red-500/30 text-sm font-medium rounded-xl text-red-400 bg-red-500/10 hover:bg-red-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 shadow-sm">
+                        <i class="fa-solid fa-ban mr-1.5"></i>Cancel All
+                    </button>
+                </div>
+            </section>
+
+            <!-- Filters -->
+            <section class="glass-card rounded-2xl p-4 sm:p-5 fade-in-up">
+                <div class="flex flex-wrap gap-2" id="queueFilters">
+                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="all">All</button>
+                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="queued">Queued</button>
+                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="downloading">Downloading</button>
+                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="completed">Completed</button>
+                    <button class="queue-filter-btn px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 transition-all duration-200" data-status="failed">Failed</button>
+                </div>
+            </section>
+
+            <!-- Job List -->
+            <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in-up">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
+                    <span class="w-7 h-7 rounded-lg bg-amber-500/10 dark:bg-amber-500/10 flex items-center justify-center text-amber-400 text-xs flex-shrink-0"><i class="fa-solid fa-list-check"></i></span>
+                    Jobs
+                </h2>
+
+                <!-- Loading -->
+                <div id="queueLoading" class="flex flex-col items-center justify-center py-10">
+                    <div class="space-y-3 w-full max-w-lg">
+                        <div class="skeleton h-12 w-full"></div>
+                        <div class="skeleton h-12 w-5/6"></div>
+                        <div class="skeleton h-12 w-4/6"></div>
+                    </div>
+                    <p class="text-gray-500 dark:text-gray-400 mt-4 text-sm">Loading queue...</p>
+                </div>
+
+                <!-- Empty -->
+                <div id="queueEmpty" class="hidden flex flex-col items-center justify-center py-12">
+                    <svg class="w-36 h-36 mb-6" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="qEmpty" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#6366f1"/>
+                            </linearGradient>
+                        </defs>
+                        <rect x="16" y="28" width="96" height="72" rx="8" stroke="url(#qEmpty)" stroke-width="3" fill="none" opacity="0.6"/>
+                        <line x1="32" y1="48" x2="80" y2="48" stroke="url(#qEmpty)" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+                        <line x1="32" y1="60" x2="96" y2="60" stroke="url(#qEmpty)" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+                        <line x1="32" y1="72" x2="72" y2="72" stroke="url(#qEmpty)" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+                        <line x1="32" y1="84" x2="56" y2="84" stroke="url(#qEmpty)" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+                        <circle cx="100" cy="88" r="18" stroke="url(#qEmpty)" stroke-width="2.5" fill="none" opacity="0.6"/>
+                        <path d="M100 82 V94 M94 88 H106" stroke="url(#qEmpty)" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+                        <g opacity="0.12">
+                            <circle cx="25" cy="18" r="2" fill="#f59e0b"/>
+                            <circle cx="105" cy="22" r="1.5" fill="#6366f1"/>
+                            <circle cx="12" cy="70" r="1.5" fill="#f59e0b"/>
+                            <circle cx="120" cy="65" r="2" fill="#06b6d4"/>
+                        </g>
+                    </svg>
+                    <p class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-indigo-400 text-xl font-bold">No jobs in queue</p>
+                    <p class="text-gray-500 dark:text-gray-500 text-sm mt-1">Downloads will appear here when started.</p>
+                </div>
+
+                <!-- Table -->
+                <div id="queueTableWrapper" class="hidden overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700/30">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700/30">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
+                                <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                                <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Progress</th>
+                                <th scope="col" class="px-4 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queueBody" class="divide-y divide-gray-200 dark:divide-gray-700/30"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ===================== TAB: OPTIONS ===================== -->
+    <div id="tab-options" class="tab-content hidden">
+        <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+            <!-- Header -->
+            <section class="glass-card rounded-2xl p-6 sm:p-8 fade-in-up gradient-border">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <span class="w-7 h-7 rounded-lg bg-cyan-500/10 dark:bg-cyan-500/10 flex items-center justify-center text-cyan-400 text-xs flex-shrink-0"><i class="fa-solid fa-sliders"></i></span>
+                            Advanced Options
+                        </h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">All yt-dlp options organized by category. Changes apply to new downloads.</p>
+                    </div>
+                    <div class="flex gap-2 shrink-0">
+                        <button id="btnResetOptions" class="ripple-container inline-flex justify-center items-center px-4 py-2 border border-gray-300 dark:border-gray-700/50 text-sm font-medium rounded-xl text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-sm">
+                            <i class="fa-solid fa-rotate-left mr-1.5"></i>Reset to Defaults
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Options Container -->
+            <div id="optionsContainer" class="space-y-4">
+                <div class="flex flex-col items-center justify-center py-16">
+                    <div class="loader-conic mb-4"></div>
+                    <p class="text-gray-500 dark:text-gray-400">Loading options...</p>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="sticky bottom-6 mt-8 flex justify-center z-40">
+                <button id="btnSaveOptions" class="ripple-container inline-flex justify-center items-center px-10 py-3.5 border border-transparent text-base font-semibold rounded-xl shadow-xl shadow-indigo-500/30 text-white bg-gradient-to-r from-indigo-600 via-violet-600 to-cyan-500 bg-[length:200%] hover:bg-right-top hover:from-indigo-500 hover:via-violet-500 hover:to-cyan-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 hover:scale-105 active:scale-95 btn-pulse">
+                    <i class="fa-solid fa-floppy-disk mr-2"></i>Save Options
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="border-t border-gray-800/30 dark:border-gray-800/30 mt-auto py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <p class="text-sm text-gray-500 dark:text-gray-500">&copy; 2026 YT-DLP Web Interface. Built with <i class="fa-solid fa-heart text-red-400/70 text-xs"></i></p>
+                <div class="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-600">
+                    <span class="flex items-center gap-1.5"><i class="fa-brands fa-github"></i> yt-dlp</span>
+                    <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500/70 inline-block"></span> Powered by yt-dlp</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+</div><!-- /main-content -->
 
 <!-- ===== TOAST CONTAINER ===== -->
 <div id="toastContainer" class="fixed top-4 right-4 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none"></div>
@@ -939,6 +1362,7 @@
         const html = document.documentElement;
         const toggle = document.getElementById('darkModeToggle');
         const icon = document.getElementById('darkModeIcon');
+        const label = document.getElementById('darkModeLabel');
 
         function setDark(isDark) {
             html.classList.toggle('dark', isDark);
@@ -946,19 +1370,45 @@
             if (icon) {
                 icon.className = isDark ? 'fa-solid fa-moon text-yellow-400' : 'fa-solid fa-sun text-yellow-500';
             }
+            if (label) {
+                label.textContent = isDark ? 'Dark Mode' : 'Light Mode';
+            }
         }
 
-        // Init from localStorage
         const stored = localStorage.getItem('darkMode');
         if (stored === 'false') {
             setDark(false);
         } else {
-            setDark(true); // default dark
+            setDark(true);
         }
 
         if (toggle) {
             toggle.addEventListener('click', () => {
                 setDark(!html.classList.contains('dark'));
+            });
+        }
+
+        // Hamburger menu
+        const hamburger = document.getElementById('hamburgerBtn');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        if (hamburger && sidebar && overlay) {
+            function toggleSidebar() {
+                sidebar.classList.toggle('open');
+                hamburger.classList.toggle('open');
+                overlay.classList.toggle('open');
+            }
+            hamburger.addEventListener('click', toggleSidebar);
+            overlay.addEventListener('click', toggleSidebar);
+            // Close sidebar on tab click (mobile)
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (window.innerWidth < 768) {
+                        sidebar.classList.remove('open');
+                        hamburger.classList.remove('open');
+                        overlay.classList.remove('open');
+                    }
+                });
             });
         }
     })();

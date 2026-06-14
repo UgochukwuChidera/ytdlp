@@ -29,6 +29,85 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
+    // ====== RIPPLE EFFECT ======
+    function addRippleEffect() {
+        document.querySelectorAll('.ripple-btn, button:not(.no-ripple)').forEach(btn => {
+            if (btn.dataset.rippleInitted) return;
+            btn.dataset.rippleInitted = 'true';
+            btn.style.position = 'relative';
+            btn.style.overflow = 'hidden';
+            btn.addEventListener('click', function(e) {
+                const rect = this.getBoundingClientRect();
+                const size = Math.max(rect.width, rect.height);
+                const x = e.clientX - rect.left - size / 2;
+                const y = e.clientY - rect.top - size / 2;
+                const ripple = document.createElement('span');
+                ripple.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${x}px;top:${y}px;border-radius:50%;background:rgba(255,255,255,0.25);transform:scale(0);animation:rippleAnim 0.6s ease-out;pointer-events:none;`;
+                this.appendChild(ripple);
+                setTimeout(() => ripple.remove(), 600);
+            });
+        });
+    }
+
+    // Add the keyframe if not present
+    if (!document.getElementById('ripple-style')) {
+        const style = document.createElement('style');
+        style.id = 'ripple-style';
+        style.textContent = `@keyframes rippleAnim { from { transform: scale(0); opacity: 0.5; } to { transform: scale(4); opacity: 0; } }`;
+        document.head.appendChild(style);
+    }
+
+    // Call after DOM is ready
+    addRippleEffect();
+
+    // ====== 3D CARD TILT ======
+    function initCardTilt() {
+        document.querySelectorAll('.tilt-card').forEach(card => {
+            if (card.dataset.tiltInitted) return;
+            card.dataset.tiltInitted = 'true';
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const rotateX = (y - centerY) / centerY * -8;
+                const rotateY = (x - centerX) / centerX * 8;
+                card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+                card.style.transition = 'transform 0.5s ease';
+                setTimeout(() => { card.style.transition = ''; }, 500);
+            });
+        });
+    }
+
+    // Also add tilt to dynamically created cards
+    const origCreateVideoCard = window.createVideoCard;
+
+    // ====== SPOTLIGHT EFFECT ======
+    function initSpotlight() {
+        document.querySelectorAll('.spotlight-card').forEach(card => {
+            if (card.dataset.spotlightInitted) return;
+            card.dataset.spotlightInitted = 'true';
+            card.style.position = 'relative';
+            card.style.overflow = 'hidden';
+
+            const spot = document.createElement('div');
+            spot.style.cssText = 'position:absolute;pointer-events:none;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(99,102,241,0.08),transparent 70%);opacity:0;transition:opacity 0.3s;transform:translate(-50%,-50%);top:0;left:0;';
+            card.appendChild(spot);
+
+            card.addEventListener('mouseenter', () => { spot.style.opacity = '1'; });
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                spot.style.left = (e.clientX - rect.left) + 'px';
+                spot.style.top = (e.clientY - rect.top) + 'px';
+            });
+            card.addEventListener('mouseleave', () => { spot.style.opacity = '0'; });
+        });
+    }
+
     // ======================== CUSTOM TOOLTIP SYSTEM ========================
 
     const tooltipEl = document.getElementById('global-tooltip');
@@ -292,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const activateTab = (tabId) => {
-        if (!tabId) return;
+        if (!tabId || tabId === currentTab) return;
 
         // Cleanup previous tab
         if (currentTab === 'queue') {
@@ -300,28 +379,61 @@ document.addEventListener('DOMContentLoaded', () => {
             if (queuePollInterval) { clearInterval(queuePollInterval); queuePollInterval = null; }
         }
 
+        const oldTab = currentTab;
         currentTab = tabId;
 
+        // Update tab buttons
         tabBtns.forEach(btn => {
             btn.classList.remove('tab-active');
-            btn.classList.add('text-gray-500', 'border-transparent');
+            btn.classList.add('text-gray-400', 'border-transparent');
         });
-        tabContents.forEach(el => el.classList.add('hidden'));
 
         const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
         if (activeBtn) {
             activeBtn.classList.add('tab-active');
-            activeBtn.classList.remove('text-gray-500', 'border-transparent');
+            activeBtn.classList.remove('text-gray-400', 'border-transparent');
         }
-        const activeContent = document.getElementById(`tab-${tabId}`);
-        if (activeContent) activeContent.classList.remove('hidden');
+
+        // Fade out old content, fade in new
+        const oldContent = oldTab ? document.getElementById(`tab-${oldTab}`) : null;
+        const newContent = document.getElementById(`tab-${tabId}`);
+
+        if (oldContent) {
+            oldContent.style.opacity = '0';
+            oldContent.style.transform = 'translateY(8px)';
+            oldContent.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+            setTimeout(() => {
+                oldContent.classList.add('hidden');
+                if (newContent) {
+                    newContent.classList.remove('hidden');
+                    newContent.style.opacity = '0';
+                    newContent.style.transform = 'translateY(8px)';
+                    requestAnimationFrame(() => {
+                        newContent.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                        newContent.style.opacity = '1';
+                        newContent.style.transform = 'translateY(0)';
+                    });
+                }
+            }, 200);
+        } else {
+            if (newContent) {
+                newContent.classList.remove('hidden');
+                newContent.style.opacity = '0';
+                newContent.style.transform = 'translateY(8px)';
+                requestAnimationFrame(() => {
+                    newContent.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                    newContent.style.opacity = '1';
+                    newContent.style.transform = 'translateY(0)';
+                });
+            }
+        }
 
         // Tab-specific activation logic
-        if (tabId === 'downloads') loadFiles();
-        if (tabId === 'setup') checkSetupStatus();
-        if (tabId === 'channels') loadChannels();
-        if (tabId === 'queue') initQueueSSE();
-        if (tabId === 'options') loadOptions();
+        if (tabId === 'downloads') setTimeout(loadFiles, 300);
+        if (tabId === 'setup') setTimeout(checkSetupStatus, 300);
+        if (tabId === 'channels') setTimeout(loadChannels, 300);
+        if (tabId === 'queue') setTimeout(initQueueSSE, 300);
+        if (tabId === 'options') setTimeout(loadOptions, 300);
     };
 
     tabBtns.forEach(btn => {
@@ -460,8 +572,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- createVideoCard ---
     const createVideoCard = (video, sourceUrl) => {
         const card = document.createElement('div');
-        card.className = 'bg-white overflow-hidden shadow rounded-lg flex flex-col transition-transform hover:-translate-y-1 hover:shadow-lg duration-200 border border-gray-100';
-
+        card.className = 'bg-white dark:bg-gray-800/30 overflow-hidden shadow-lg rounded-xl flex flex-col transition-all duration-300 border border-gray-100 dark:border-gray-700/30 backdrop-blur-sm tilt-card spotlight-card fade-in-up';
+        
         const thumbnail = escapeHtml(video.thumbnail || 'https://via.placeholder.com/320x180.png?text=No+Thumbnail');
         const title = escapeHtml(video.title || 'Unknown Title');
         const channel = escapeHtml(video.uploader || video.channel || 'Unknown Channel');
@@ -472,25 +584,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const formatNote = escapeHtml(video.format_note || video.format || (video.height ? `${video.height}p` : null));
 
         card.innerHTML = `
-            <div class="relative pt-[56.25%] bg-gray-100 group">
-                <img class="absolute inset-0 w-full h-full object-cover" src="${thumbnail}" alt="Thumbnail" onerror="this.src='https://via.placeholder.com/320x180.png?text=Image+Error'">
-                <div class="absolute bottom-2 right-2 bg-black bg-opacity-80 text-white text-xs px-1.5 py-0.5 rounded font-medium tracking-wide flex items-center gap-1">
-                    <i class="fa-solid fa-clock"></i>${duration}
+            <div class="video-card-thumb bg-gray-200 dark:bg-gray-800">
+                <img src="${thumbnail}" alt="Thumbnail" loading="lazy" onerror="this.src='https://via.placeholder.com/320x180.png?text=Error'">
+                <div class="play-overlay">
+                    <div class="play-btn-circle">
+                        <i class="fa-solid fa-play"></i>
+                    </div>
                 </div>
-                ${formatNote ? `<div class="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-1.5 py-0.5 rounded font-medium">${formatNote}</div>` : ''}
-                <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-opacity duration-200"></div>
+                <div class="gradient-overlay"></div>
+                <div class="duration-badge">
+                    <i class="fa-solid fa-clock mr-1" style="font-size:0.6rem;"></i>${duration}
+                </div>
+                ${formatNote ? `<div class="quality-badge">${formatNote}</div>` : ''}
             </div>
             <div class="p-4 flex-1 flex flex-col">
-                <h3 class="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">${title}</h3>
-                <p class="text-xs text-gray-500 mb-1 flex items-center">
-                    <i class="fa-solid fa-user-circle mr-1"></i>${channel}
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1 line-clamp-2" title="${title.replace(/"/g, '&quot;')}">${title}</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-user"></i>${channel}
                 </p>
-                <div class="flex items-center gap-3 text-xs text-gray-400 mb-3">
+                <div class="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500 mb-3">
                     ${viewCount ? `<span><i class="fa-solid fa-eye mr-1"></i>${viewCount >= 1000000 ? (viewCount / 1000000).toFixed(1) + 'M' : viewCount >= 1000 ? (viewCount / 1000).toFixed(1) + 'K' : viewCount}</span>` : ''}
                     ${uploadDate ? `<span><i class="fa-solid fa-calendar mr-1"></i>${uploadDate}</span>` : ''}
                 </div>
                 <div class="mt-auto">
-                    <button class="download-btn w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors" data-url="${url}">
+                    <button class="download-btn ripple-btn w-full inline-flex justify-center items-center px-4 py-2.5 border border-transparent text-sm font-semibold rounded-xl shadow-sm text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/20 active:scale-[0.98]" data-url="${url}">
                         <i class="fa-solid fa-download mr-2"></i>Download
                     </button>
                 </div>
@@ -578,6 +695,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const card = createVideoCard(data, url);
             if (resultsGrid) resultsGrid.appendChild(card);
+            // Add staggered animation
+            resultsGrid.querySelectorAll('.fade-in-up').forEach((el, i) => {
+                el.style.animationDelay = (i * 0.05) + 's';
+            });
             if (resultsContainer) resultsContainer.classList.remove('hidden');
         } catch (error) {
             hideLoading();
@@ -612,6 +733,13 @@ document.addEventListener('DOMContentLoaded', () => {
             entries.forEach(video => {
                 if (video && resultsGrid) resultsGrid.appendChild(createVideoCard(video, url));
             });
+
+            // Add staggered animation
+            if (resultsGrid) {
+                resultsGrid.querySelectorAll('.fade-in-up').forEach((el, i) => {
+                    el.style.animationDelay = (i * 0.05) + 's';
+                });
+            }
 
             if (resultsContainer) resultsContainer.classList.remove('hidden');
         } catch (error) {
@@ -1665,10 +1793,16 @@ document.addEventListener('DOMContentLoaded', () => {
         window.loadOptions = loadOptions;
     }
 
+
+
     // ======================== INIT ========================
 
     // Auto-init any remaining [data-tooltip] elements from HTML
     initDataTooltips();
+
+    // Initialize micro-interactions on existing elements
+    initCardTilt();
+    initSpotlight();
 
     activateTab('download');
 
