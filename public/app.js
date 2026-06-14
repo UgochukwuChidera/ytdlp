@@ -984,7 +984,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!clearAllBtn) {
                 clearAllBtn = document.createElement('button');
                 clearAllBtn.id = 'btnClearAllFiles';
-                clearAllBtn.className = 'mb-4 inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-all duration-200';
+                clearAllBtn.className = 'ripple-btn mb-4 inline-flex items-center px-4 py-2 text-sm font-semibold rounded-xl text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all duration-200 shadow-sm hover:shadow-red-500/10';
                 clearAllBtn.innerHTML = '<i class="fa-solid fa-trash-can mr-2"></i>Clear All';
                 clearAllBtn.addEventListener('click', clearAllFiles);
                 filesTableWrapper.parentNode.insertBefore(clearAllBtn, filesTableWrapper);
@@ -992,7 +992,7 @@ document.addEventListener('DOMContentLoaded', () => {
             clearAllBtn.classList.remove('hidden');
             files.forEach(file => {
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-50';
+                tr.className = 'hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200 fade-in-up';
                 const filename = escapeHtml(file.name || 'Unknown');
                 const size = file.size || 0;
                 const date = file.date || file.modified || file.created || '';
@@ -1003,11 +1003,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(date)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div class="flex items-center justify-end gap-2">
-                            <a href="/api/files/${encodeURIComponent(file.name || '')}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                            <a href="/api/files/${encodeURIComponent(file.name || '')}" class="ripple-btn inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-lg shadow-indigo-500/20">
                                 <i class="fa-solid fa-download mr-1.5"></i>Download
                             </a>
-                            <button class="btn-delete-file px-3 py-1.5 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors" data-filename="${encodeURIComponent(file.name || '')}">
-                                <i class="fa-solid fa-trash-can mr-1"></i>Delete
+                            <button class="btn-delete-file ripple-btn px-3 py-1.5 text-sm font-semibold rounded-xl text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all duration-200 shadow-sm hover:shadow-red-500/10" data-filename="${encodeURIComponent(file.name || '')}">
+                                <i class="fa-solid fa-trash-can mr-1.5"></i>Delete
                             </button>
                         </div>
                     </td>
@@ -1390,11 +1390,11 @@ document.addEventListener('DOMContentLoaded', () => {
             initTooltip(btn, '', 'Show only downloads with this status. \u201cAll\u201d shows everything.');
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.queue-filter-btn').forEach(b => {
-                    b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                    b.classList.remove('bg-gradient-to-r', 'from-indigo-600', 'to-violet-600', 'text-white', 'border-transparent', 'shadow-lg', 'shadow-indigo-500/20');
                     b.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
                 });
                 btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
-                btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                btn.classList.add('bg-gradient-to-r', 'from-indigo-600', 'to-violet-600', 'text-white', 'border-transparent', 'shadow-lg', 'shadow-indigo-500/20');
                 queueFilter = btn.dataset.status;
                 renderQueueJobs();
             });
@@ -1403,7 +1403,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.queue-filter-btn').forEach(btn => {
             if (btn.dataset.status === 'all' || (!btn.dataset.status && btn.textContent.trim() === 'All')) {
                 btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
-                btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                btn.classList.add('bg-gradient-to-r', 'from-indigo-600', 'to-violet-600', 'text-white', 'border-transparent', 'shadow-lg', 'shadow-indigo-500/20');
             }
         });
 
@@ -1451,11 +1451,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let queueData = [];
 
         const renderQueueJobs = () => {
-            // Clear loading timeout
-            if (window._queueLoadingTimeout) {
-                clearTimeout(window._queueLoadingTimeout);
-                window._queueLoadingTimeout = null;
-            }
             if (!queueJobsBody) return;
 
             const filtered = queueFilter === 'all' ? queueData : queueData.filter(j => j.status === queueFilter);
@@ -1476,18 +1471,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             queueJobsBody.innerHTML = '';
             if (filtered.length === 0) {
-                queueJobsBody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No ${escapeHtml(queueFilter)} jobs</td></tr>`;
+                queueJobsBody.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400 text-sm"><i class="fa-solid fa-inbox mr-2 opacity-50"></i>No ${escapeHtml(queueFilter)} jobs</td></tr>`;
                 return;
             }
 
             filtered.forEach(job => {
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-50';
+                tr.className = 'hover:bg-white/5 transition-all duration-200 fade-in-up';
                 const statusColors = {
-                    queued: 'bg-yellow-100 text-yellow-800',
-                    downloading: 'bg-blue-100 text-blue-800',
-                    completed: 'bg-green-100 text-green-800',
-                    failed: 'bg-red-100 text-red-800',
+                    queued: 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/20',
+                    downloading: 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-300 border border-blue-500/20',
+                    completed: 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-300 border border-green-500/20',
+                    failed: 'bg-gradient-to-r from-red-500/20 to-rose-500/20 text-red-300 border border-red-500/20',
                 };
                 const statusIcons = {
                     queued: '<i class="fa-solid fa-clock"></i>',
@@ -1502,26 +1497,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 const escapedId = escapeHtml(id);
 
                 tr.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 max-w-xs truncate">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100 max-w-xs truncate">
                         ${title}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status] || statusColors.queued}">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${statusColors[status] || statusColors.queued}">
                             ${statusIcons[status] || ''} ${status.charAt(0).toUpperCase() + status.slice(1)}
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="flex items-center gap-3">
-                            <div class="flex-1 bg-gray-200 rounded-full h-2 min-w-[80px]">
-                                <div class="h-2 rounded-full transition-all duration-300 ${status === 'completed' ? 'bg-green-500' : status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}" style="width: ${progress}%"></div>
+                            <div class="flex-1 bg-gray-700/30 rounded-full h-2.5 min-w-[80px] overflow-hidden">
+                                <div class="h-2.5 rounded-full transition-all duration-500 ease-out ${status === 'completed' ? 'bg-gradient-to-r from-green-400 to-emerald-500' : status === 'failed' ? 'bg-gradient-to-r from-red-400 to-rose-500' : 'bg-gradient-to-r from-indigo-400 to-violet-500 progress-glow'}" style="width: ${progress}%"></div>
                             </div>
-                            <span class="text-xs text-gray-500 w-10 text-right">${status === 'completed' ? '100' : status === 'failed' ? '-' : Math.round(progress)}%</span>
+                            <span class="text-xs text-gray-400 dark:text-gray-500 w-10 text-right tabular-nums">${status === 'completed' ? '100' : status === 'failed' ? '-' : Math.round(progress)}%</span>
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        ${(status === 'queued' || status === 'downloading') ? `<button class="btn-cancel-job px-3 py-1.5 text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors" data-job-id="${escapedId}"><i class="fa-solid fa-ban mr-1"></i>Cancel</button>` : ''}
-                        ${status === 'completed' ? `<span class="text-xs text-green-600"><i class="fa-solid fa-check-circle mr-1"></i>Done</span>` : ''}
-                        ${status === 'failed' ? `<span class="text-xs text-red-500"><i class="fa-solid fa-circle-exclamation mr-1"></i>Failed</span>` : ''}
+                        ${(status === 'queued' || status === 'downloading') ? `<button class="btn-cancel-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all duration-200 shadow-sm hover:shadow-red-500/10" data-job-id="${escapedId}"><i class="fa-solid fa-ban mr-1"></i>Cancel</button>` : ''}
+                        ${status === 'completed' ? `<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-400 bg-green-500/10 px-3 py-1.5 rounded-xl"><i class="fa-solid fa-check-circle"></i>Done</span>` : ''}
+                        ${status === 'failed' ? `<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-400 bg-red-500/10 px-3 py-1.5 rounded-xl"><i class="fa-solid fa-circle-exclamation"></i>Failed</span>` : ''}
                     </td>
                 `;
 
@@ -1575,19 +1570,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (queueEventSource) { queueEventSource.close(); queueEventSource = null; }
             if (queuePollInterval) { clearInterval(queuePollInterval); queuePollInterval = null; }
 
-            // Safety timeout: force-loading to resolve after 8 seconds no matter what
-            if (window._queueLoadingTimeout) {
-                clearTimeout(window._queueLoadingTimeout);
-            }
-            window._queueLoadingTimeout = setTimeout(() => {
-                if (queueLoading && !queueLoading.classList.contains('hidden')) {
-                    queueLoading.classList.add('hidden');
-                    if (queueEmpty) queueEmpty.classList.remove('hidden');
-                    // Show a subtle message that loading timed out
-                    showToast('Queue loaded (empty)', 'info');
-                }
-            }, 8000);
-
             try {
                 queueEventSource = new EventSource('/api/download/queue/events');
                 queueEventSource.onmessage = (e) => {
@@ -1609,14 +1591,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     } catch (err) {}
                 };
                 queueEventSource.onerror = () => {
-                    // Fallback to polling if SSE fails
+                    showToast('SSE connection lost, falling back to polling', 'warning');
                     if (queueEventSource) { queueEventSource.close(); queueEventSource = null; }
                     if (!queuePollInterval) {
                         queuePollInterval = setInterval(loadQueueJobs, 3000);
                     }
                 };
             } catch (err) {
-                // Fallback to polling
+                showToast('Could not connect to queue events, using polling', 'warning');
                 if (!queuePollInterval) {
                     queuePollInterval = setInterval(loadQueueJobs, 3000);
                 }
