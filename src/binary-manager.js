@@ -69,11 +69,21 @@ export function checkBinaries() {
     return binaries.map((name) => {
         const binPath = getBinaryPath(name);
         const exists = fs.existsSync(binPath);
+        let version;
+        let corrupt = false;
+        if (exists) {
+            version = getBinaryVersion(binPath);
+            if (!version) {
+                corrupt = true;
+                version = undefined;
+            }
+        }
         const info = {
             name,
             path: binPath,
             exists,
-            version: exists ? getBinaryVersion(binPath) : undefined,
+            version,
+            corrupt,
         };
         return info;
     });
@@ -116,29 +126,39 @@ export async function getLatestFfmpegVersion() {
 export async function downloadFile(url, dest, onProgress) {
     ensureBinDir();
     const protocol = url.startsWith('https') ? https : http;
+    let existingSize = 0;
+    try { existingSize = fs.statSync(dest).size; } catch {}
 
     return new Promise((resolve, reject) => {
+        let aborted = false;
         function doRequest(targetUrl) {
-            protocol.get(targetUrl, {
-                headers: { 'User-Agent': 'ytdlp-app/1.0' },
-            }, (response) => {
+            if (aborted) return;
+            const headers = { 'User-Agent': 'ytdlp-app/1.0' };
+            if (existingSize > 0) {
+                headers['Range'] = `bytes=${existingSize}-`;
+            }
+
+            const req = protocol.get(targetUrl, { headers }, (response) => {
                 if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
                     return doRequest(response.headers.location);
                 }
-                if (response.statusCode !== 200) {
-                    return reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
-                }
 
+                const isResume = response.statusCode === 206;
                 const totalSize = parseInt(response.headers['content-length'], 10);
-                let downloaded = 0;
+                const fullSize = isResume
+                    ? parseInt((response.headers['content-range'] || '').split('/')[1], 10) || (existingSize + totalSize)
+                    : (response.statusCode === 200 ? totalSize : 0);
+                let downloaded = existingSize;
                 let lastReported = -1;
 
-                const file = createWriteStream(dest);
+                const flags = existingSize > 0 && isResume ? 'a' : 'w';
+                const file = createWriteStream(dest, { flags });
 
                 response.on('data', (chunk) => {
+                    if (aborted) return;
                     downloaded += chunk.length;
-                    if (totalSize && onProgress) {
-                        const percent = Math.round((downloaded / totalSize) * 100);
+                    if (fullSize && onProgress) {
+                        const percent = Math.round((downloaded / fullSize) * 100);
                         if (percent !== lastReported) {
                             lastReported = percent;
                             onProgress(percent);
@@ -148,8 +168,10 @@ export async function downloadFile(url, dest, onProgress) {
 
                 file.on('finish', () => {
                     file.close();
-                    if (onProgress) onProgress(100);
-                    resolve(dest);
+                    if (!aborted) {
+                        if (onProgress) onProgress(100);
+                        resolve(dest);
+                    }
                 });
 
                 file.on('error', (err) => {
@@ -158,23 +180,27 @@ export async function downloadFile(url, dest, onProgress) {
                 });
 
                 response.pipe(file);
-            }).on('error', (err) => {
+            });
+
+            req.on('error', (err) => {
                 fs.unlink(dest, () => {});
                 reject(err);
             });
+
+            return req;
         }
-        doRequest(url);
+        const req = doRequest(url);
     });
 }
 
-async function downloadYtdlp(onProgress) {
+export async function downloadYtdlp(onProgress) {
     const ytdlpPath = getBinaryPath('yt-dlp');
     const url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux';
     await downloadFile(url, ytdlpPath, (p) => onProgress('yt-dlp', p));
     fs.chmodSync(ytdlpPath, 0o755);
 }
 
-async function downloadFfmpeg(onProgress) {
+export async function downloadFfmpeg(onProgress) {
     const tarPath = path.join(BIN_DIR, 'ffmpeg.tar.xz');
     const url = 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz';
     await downloadFile(url, tarPath, (p) => onProgress('ffmpeg', p));

@@ -443,14 +443,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 300);
         if (tabId === 'queue') setTimeout(() => {
             try {
-                if (typeof initQueueSSE === 'function') {
-                    initQueueSSE();
+                if (typeof window.initQueueSSE === 'function') {
+                    window.initQueueSSE();
                 } else {
                     throw new Error('initQueueSSE not defined');
                 }
             } catch (e) {
                 console.error('Queue tab init failed:', e);
-                // Always resolve the loading skeleton
                 const ql = document.getElementById('queueLoading');
                 const qe = document.getElementById('queueEmpty');
                 if (ql) ql.classList.add('hidden');
@@ -660,6 +659,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const requestBody = {
             url: url,
+            title: title || url,
             format: formatSelect.value,
             quality: qualitySelect.value,
             audioOnly: audioOnlyToggle.checked,
@@ -870,6 +870,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const installed = bin.version;
                     const binName = escapeHtml(bin.name);
                     const binVersion = escapeHtml(installed || '?');
+                    let badge;
+                    if (bin.corrupt) {
+                        badge = '<span class="px-2 py-0.5 text-xs font-medium text-red-800 bg-red-100 rounded-full">Corrupted</span>';
+                    } else if (bin.exists) {
+                        badge = '<span class="px-2 py-0.5 text-xs font-medium text-green-800 bg-green-100 rounded-full">Installed</span>';
+                    } else {
+                        badge = '<span class="px-2 py-0.5 text-xs font-medium text-yellow-800 bg-yellow-100 rounded-full">Not Installed</span>';
+                    }
+                    const btnLabel = bin.exists ? 'Re-download' : 'Download';
                     html += `<div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                         <div class="flex items-center gap-2">
                             <i class="fa-solid fa-file-code text-gray-400"></i>
@@ -877,16 +886,68 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="flex items-center gap-3">
                             <span class="text-sm text-gray-500">${bin.exists ? 'v' + binVersion : 'Not installed'}</span>
-                            ${bin.exists ? '<span class="px-2 py-0.5 text-xs font-medium text-green-800 bg-green-100 rounded-full">Installed</span>' : '<span class="px-2 py-0.5 text-xs font-medium text-yellow-800 bg-yellow-100 rounded-full">Not Installed</span>'}
+                            ${badge}
+                            <button class="btn-download-binary btn btn-quiet text-xs px-2 py-1" data-binary="${binName}" type="button"><i class="fa-solid fa-download"></i>${btnLabel}</button>
                         </div>
                     </div>`;
                 });
             }
             html += '</div>';
             statusContent.innerHTML = html;
+
+            // Wire up individual binary download buttons
+            statusContent.querySelectorAll('.btn-download-binary').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const binary = btn.dataset.binary;
+                    downloadSingleBinary(binary);
+                });
+            });
         } catch (error) {
             statusContent.innerHTML = `<p class="text-red-500"><i class="fa-solid fa-circle-xmark mr-1"></i>${escapeHtml(error.message)}</p>`;
         }
+    };
+
+    const downloadSingleBinary = (binary) => {
+        const allBtns = document.querySelectorAll('.btn-download-binary');
+        const btn = Array.from(allBtns).find(b => b.dataset.binary === binary);
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+        const evtSource = new EventSource(`/api/setup/download/${encodeURIComponent(binary)}`);
+
+        evtSource.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.step === 'yt-dlp' || data.step === 'ffmpeg') {
+                if (data.skipped) {
+                    evtSource.close();
+                    btn.innerHTML = '<i class="fa-solid fa-check"></i> Already latest';
+                    showToast(`${binary} already at latest version`, 'info');
+                    btn.disabled = false;
+                    checkSetupStatus();
+                } else {
+                    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${data.percent || 0}%`;
+                }
+            } else if (data.step === 'all' && data.status === 'done') {
+                evtSource.close();
+                btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                showToast(`${binary} downloaded successfully`, 'success');
+                btn.disabled = false;
+                checkSetupStatus();
+            } else if (data.step === 'error') {
+                evtSource.close();
+                btn.innerHTML = '<i class="fa-solid fa-download"></i>';
+                btn.disabled = false;
+                showToast(data.error || `${binary} download failed`, 'error');
+                checkSetupStatus();
+            }
+        };
+
+        evtSource.onerror = () => {
+            evtSource.close();
+            btn.innerHTML = '<i class="fa-solid fa-download"></i>';
+            btn.disabled = false;
+        };
     };
 
     btnSetupDownload.addEventListener('click', () => {
@@ -914,13 +975,25 @@ document.addEventListener('DOMContentLoaded', () => {
         evtSource.onmessage = (e) => {
             const data = JSON.parse(e.data);
             if (data.step === 'yt-dlp') {
-                if (ytdlpBar) ytdlpBar.style.width = (data.percent || 0) + '%';
-                if (ytdlpPercent) ytdlpPercent.textContent = (data.percent || 0) + '%';
-                if (ytdlpStatus) ytdlpStatus.textContent = data.status || '';
+                if (data.skipped) {
+                    if (ytdlpBar) ytdlpBar.style.width = '100%';
+                    if (ytdlpPercent) ytdlpPercent.textContent = '100%';
+                    if (ytdlpStatus) ytdlpStatus.textContent = 'Already latest';
+                } else {
+                    if (ytdlpBar) ytdlpBar.style.width = (data.percent || 0) + '%';
+                    if (ytdlpPercent) ytdlpPercent.textContent = (data.percent || 0) + '%';
+                    if (ytdlpStatus) ytdlpStatus.textContent = data.status || '';
+                }
             } else if (data.step === 'ffmpeg') {
-                if (ffmpegBar) ffmpegBar.style.width = (data.percent || 0) + '%';
-                if (ffmpegPercent) ffmpegPercent.textContent = (data.percent || 0) + '%';
-                if (ffmpegStatus) ffmpegStatus.textContent = data.status || '';
+                if (data.skipped) {
+                    if (ffmpegBar) ffmpegBar.style.width = '100%';
+                    if (ffmpegPercent) ffmpegPercent.textContent = '100%';
+                    if (ffmpegStatus) ffmpegStatus.textContent = 'Already latest';
+                } else {
+                    if (ffmpegBar) ffmpegBar.style.width = (data.percent || 0) + '%';
+                    if (ffmpegPercent) ffmpegPercent.textContent = (data.percent || 0) + '%';
+                    if (ffmpegStatus) ffmpegStatus.textContent = data.status || '';
+                }
             } else if (data.step === 'all' && data.status === 'done') {
                 evtSource.close();
                 if (ytdlpBar) ytdlpBar.style.width = '100%';
@@ -948,6 +1021,25 @@ document.addEventListener('DOMContentLoaded', () => {
             cleanup();
         };
     });
+
+    const openFolder = async (folder) => {
+        try {
+            const response = await fetch('/api/open-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder })
+            });
+            if (!response.ok) throw new Error('Failed to open folder');
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    };
+
+    const btnOpenBinFolder = document.getElementById('btnOpenBinFolder');
+    if (btnOpenBinFolder) {
+        initTooltip(btnOpenBinFolder, '', 'Open the folder where yt-dlp and ffmpeg binaries are stored.');
+        btnOpenBinFolder.addEventListener('click', () => openFolder('bin'));
+    }
 
     // ======================== DOWNLOADS TAB ========================
 
@@ -1049,6 +1141,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast(error.message, 'error');
             }
         };
+
+        const btnOpenDownloadsFolder = document.getElementById('btnOpenDownloadsFolder');
+        if (btnOpenDownloadsFolder) {
+            initTooltip(btnOpenDownloadsFolder, '', 'Open the folder where downloaded files are saved.');
+            btnOpenDownloadsFolder.addEventListener('click', () => openFolder('downloads'));
+        }
 
         const clearAllFiles = async () => {
             if (!confirm('Delete ALL downloaded files? This cannot be undone.')) return;
@@ -1377,12 +1475,20 @@ document.addEventListener('DOMContentLoaded', () => {
         concurrencyInput = document.getElementById('concurrencySlider');
         concurrencyDisplay = document.getElementById('concurrencyValue');
         const btnCancelAll = document.getElementById('btnCancelAll');
+        const btnStartAll = document.getElementById('btnStartAll');
+        const btnClearCompleted = document.getElementById('btnClearCompleted');
+        const btnClearFailed = document.getElementById('btnClearFailed');
+        const btnClearAll = document.getElementById('btnClearAll');
         const queueLoading = document.getElementById('queueLoading');
         const queueEmpty = document.getElementById('queueEmpty');
         const queueTableWrapper = document.getElementById('queueTableWrapper');
 
         initTooltip(concurrencyInput, '', 'How many downloads to run at the same time. 1 = one at a time, 5 = five at once. Higher numbers use more internet bandwidth but finish faster.');
-        initTooltip(btnCancelAll, '', 'Remove every download from the queue. Downloads that are already in progress will be stopped too.');
+        initTooltip(btnCancelAll, '', 'Cancel all queued and downloading jobs.');
+        initTooltip(btnStartAll, '', 'Start all queued jobs now.');
+        initTooltip(btnClearCompleted, '', 'Remove all completed jobs from the list.');
+        initTooltip(btnClearFailed, '', 'Remove all failed jobs from the list.');
+        initTooltip(btnClearAll, '', 'Remove every finished job.');
         initTooltip(queueEmpty, '', 'No downloads queued yet. Go to the Download or Channels tab to start some.');
 
         // Filter buttons
@@ -1435,6 +1541,60 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        btnStartAll.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/download/queue/start-all', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to start jobs');
+                showToast('Starting queued jobs', 'success');
+                renderQueueJobs();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
+        btnClearCompleted.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/download/queue/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'completed' })
+                });
+                if (!response.ok) throw new Error('Failed to clear completed');
+                renderQueueJobs();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
+        btnClearFailed.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/download/queue/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'failed' })
+                });
+                if (!response.ok) throw new Error('Failed to clear failed');
+                renderQueueJobs();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
+        btnClearAll.addEventListener('click', async () => {
+            if (!confirm('Remove all jobs from the queue?')) return;
+            try {
+                const response = await fetch('/api/download/queue/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'all' })
+                });
+                if (!response.ok) throw new Error('Failed to clear queue');
+                renderQueueJobs();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+
         // Fetch current concurrency on load
         const fetchConcurrency = async () => {
             try {
@@ -1481,12 +1641,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const statusColors = {
                     queued: 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/20',
                     downloading: 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-300 border border-blue-500/20',
+                    paused: 'bg-gradient-to-r from-slate-500/20 to-zinc-500/20 text-slate-300 border border-slate-500/20',
                     completed: 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-300 border border-green-500/20',
                     failed: 'bg-gradient-to-r from-red-500/20 to-rose-500/20 text-red-300 border border-red-500/20',
                 };
                 const statusIcons = {
                     queued: '<i class="fa-solid fa-clock"></i>',
                     downloading: '<i class="fa-solid fa-arrow-down"></i>',
+                    paused: '<i class="fa-solid fa-pause"></i>',
                     completed: '<i class="fa-solid fa-check"></i>',
                     failed: '<i class="fa-solid fa-xmark"></i>',
                 };
@@ -1495,6 +1657,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 const title = escapeHtml(job.title || job.url || 'Unknown');
                 const id = job.id || job._id;
                 const escapedId = escapeHtml(id);
+                const hasError = job.error && status === 'failed';
+
+                let actionsHtml = '';
+                if (status === 'queued') {
+                    actionsHtml = `
+                        <button class="btn-start-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 transition-all duration-200 shadow-sm mr-1" data-job-id="${escapedId}"><i class="fa-solid fa-play mr-1"></i>Start</button>
+                        <button class="btn-remove-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all duration-200 shadow-sm" data-job-id="${escapedId}"><i class="fa-solid fa-trash-can mr-1"></i></button>
+                    `;
+                } else if (status === 'downloading') {
+                    actionsHtml = `<button class="btn-remove-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500/50 transition-all duration-200 shadow-sm" data-job-id="${escapedId}"><i class="fa-solid fa-pause mr-1"></i>Pause</button>`;
+                } else if (status === 'paused') {
+                    actionsHtml = `
+                        <button class="btn-resume-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 transition-all duration-200 shadow-sm mr-1" data-job-id="${escapedId}"><i class="fa-solid fa-play mr-1"></i>Resume</button>
+                        <button class="btn-remove-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all duration-200 shadow-sm" data-job-id="${escapedId}"><i class="fa-solid fa-trash-can mr-1"></i></button>
+                    `;
+                } else {
+                    actionsHtml = `
+                        ${hasError ? `<span class="btn-copy-error inline-flex items-center gap-1.5 text-xs font-medium text-red-400 bg-red-500/10 mr-2 px-3 py-1.5 rounded-xl cursor-pointer" title="Click to copy error" data-error="${escapeHtml(job.error)}"><i class="fa-solid fa-circle-exclamation"></i>Failed</span>` : ''}
+                        <button class="btn-remove-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-gray-400 bg-gray-500/10 hover:bg-gray-500/20 border border-gray-500/30 hover:border-gray-500/50 transition-all duration-200 shadow-sm" data-job-id="${escapedId}"><i class="fa-solid fa-trash-can mr-1"></i>Remove</button>
+                    `;
+                }
 
                 tr.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100 max-w-xs truncate">
@@ -1514,33 +1697,66 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        ${(status === 'queued' || status === 'downloading') ? `<button class="btn-cancel-job ripple-btn px-3 py-1.5 text-xs font-semibold rounded-xl text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all duration-200 shadow-sm hover:shadow-red-500/10" data-job-id="${escapedId}"><i class="fa-solid fa-ban mr-1"></i>Cancel</button>` : ''}
-                        ${status === 'completed' ? `<span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-400 bg-green-500/10 px-3 py-1.5 rounded-xl"><i class="fa-solid fa-check-circle"></i>Done</span>` : ''}
-                        ${status === 'failed' ? `<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-400 bg-red-500/10 px-3 py-1.5 rounded-xl"><i class="fa-solid fa-circle-exclamation"></i>Failed</span>` : ''}
+                        ${actionsHtml}
                     </td>
                 `;
 
-                // Tooltip on the title (shows full title when truncated)
                 const titleTd = tr.querySelector('td:first-child');
                 initTooltip(titleTd, '', title);
 
-                // Tooltip on failed error span
-                const errSpan = tr.querySelector('.text-red-500');
-                if (errSpan && job.error) {
-                    initTooltip(errSpan, '', job.error);
+                const startBtn = tr.querySelector('.btn-start-job');
+                if (startBtn) {
+                    startBtn.addEventListener('click', async () => {
+                        try {
+                            const response = await fetch('/api/download/queue/start-all', { method: 'POST' });
+                            if (!response.ok) throw new Error('Failed to start job');
+                            showToast('Job started', 'success');
+                        } catch (error) {
+                            showToast(error.message, 'error');
+                        }
+                    });
                 }
 
-                const cancelBtn = tr.querySelector('.btn-cancel-job');
-                if (cancelBtn) {
-                    cancelBtn.addEventListener('click', async () => {
-                        const jobId = cancelBtn.dataset.jobId;
+                const resumeBtn = tr.querySelector('.btn-resume-job');
+                if (resumeBtn) {
+                    resumeBtn.addEventListener('click', async () => {
+                        const jobId = resumeBtn.dataset.jobId;
                         try {
-                            const response = await fetch(`/api/download/queue/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
-                            if (!response.ok) throw new Error('Failed to cancel');
-                            showToast('Job cancelled', 'info');
+                            const response = await fetch(`/api/download/queue/resume/${encodeURIComponent(jobId)}`, { method: 'POST' });
+                            if (!response.ok) throw new Error('Failed to resume job');
+                            showToast('Job resumed', 'success');
                             renderQueueJobs();
                         } catch (error) {
                             showToast(error.message, 'error');
+                        }
+                    });
+                }
+
+                const removeBtn = tr.querySelector('.btn-remove-job');
+                if (removeBtn) {
+                    removeBtn.addEventListener('click', async () => {
+                        const jobId = removeBtn.dataset.jobId;
+                        try {
+                            const response = await fetch(`/api/download/queue/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+                            if (!response.ok) throw new Error('Failed to remove');
+                            showToast('Job removed', 'info');
+                            renderQueueJobs();
+                        } catch (error) {
+                            showToast(error.message, 'error');
+                        }
+                    });
+                }
+
+                const errBtn = tr.querySelector('.btn-copy-error');
+                if (errBtn) {
+                    errBtn.addEventListener('click', async () => {
+                        const errText = errBtn.dataset.error;
+                        if (!errText) return;
+                        try {
+                            await navigator.clipboard.writeText(errText);
+                            showToast('Error copied to clipboard', 'success');
+                        } catch {
+                            showToast('Failed to copy error', 'error');
                         }
                     });
                 }
@@ -1563,9 +1779,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        const initQueueSSE = () => {
+        const initQueueSSE = async () => {
             fetchConcurrency();
-            loadQueueJobs();
+            await loadQueueJobs();
 
             if (queueEventSource) { queueEventSource.close(); queueEventSource = null; }
             if (queuePollInterval) { clearInterval(queuePollInterval); queuePollInterval = null; }
@@ -1575,7 +1791,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 queueEventSource.onmessage = (e) => {
                     try {
                         const data = JSON.parse(e.data);
-                        if (data.jobs) {
+                        if (Array.isArray(data.jobs)) {
                             queueData = data.jobs;
                         } else if (data.job) {
                             const idx = queueData.findIndex(j => (j.id || j._id) === (data.job.id || data.job._id));
@@ -1607,6 +1823,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         window.renderQueueJobs = renderQueueJobs;
         window.loadQueueJobs = loadQueueJobs;
+        window.initQueueSSE = initQueueSSE;
     }
 
     // ======================== OPTIONS TAB ========================

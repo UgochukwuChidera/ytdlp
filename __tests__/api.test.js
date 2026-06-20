@@ -15,6 +15,8 @@ jest.unstable_mockModule('../src/binary-manager.js', () => {
   const mockDownloadBinaries = jest.fn(() => Promise.resolve());
   const mockDownloadFile = jest.fn(() => Promise.resolve());
   const mockExtractFfmpeg = jest.fn(() => Promise.resolve());
+  const mockDownloadYtdlp = jest.fn(() => Promise.resolve());
+  const mockDownloadFfmpeg = jest.fn(() => Promise.resolve());
 
   return {
     checkBinaries: mockCheckBinaries,
@@ -23,6 +25,8 @@ jest.unstable_mockModule('../src/binary-manager.js', () => {
     getLatestYtdlpVersion: mockGetLatestYtdlpVersion,
     getLatestFfmpegVersion: mockGetLatestFfmpegVersion,
     downloadBinaries: mockDownloadBinaries,
+    downloadYtdlp: mockDownloadYtdlp,
+    downloadFfmpeg: mockDownloadFfmpeg,
     downloadFile: mockDownloadFile,
     extractFfmpeg: mockExtractFfmpeg,
   };
@@ -36,6 +40,10 @@ jest.unstable_mockModule('../src/download-queue.js', () => {
   const mockGetJob = jest.fn((id) => id === 'job-1' ? { id: 'job-1', url: 'https://example.com/video', status: 'completed', progress: 100 } : null);
   const mockCancelJob = jest.fn((id) => id === 'job-1');
   const mockCancelAll = jest.fn();
+  const mockDeleteJob = jest.fn((id) => id === 'job-1');
+  const mockClearJobs = jest.fn(() => 0);
+  const mockProcessQueue = jest.fn();
+  const mockResumeJob = jest.fn((id) => id === 'job-1');
   const mockOnProgress = jest.fn(() => () => {});
   const mockGetConcurrency = jest.fn(() => 3);
   const mockSetConcurrency = jest.fn();
@@ -48,6 +56,10 @@ jest.unstable_mockModule('../src/download-queue.js', () => {
     getJob: mockGetJob,
     cancelJob: mockCancelJob,
     cancelAll: mockCancelAll,
+    deleteJob: mockDeleteJob,
+    clearJobs: mockClearJobs,
+    processQueue: mockProcessQueue,
+    resumeJob: mockResumeJob,
     onProgress: mockOnProgress,
   };
 });
@@ -102,6 +114,8 @@ beforeEach(() => {
     return null;
   });
   downloadQueue.cancelJob.mockImplementation((id) => id === 'job-1');
+  downloadQueue.deleteJob.mockImplementation((id) => id === 'job-1');
+  downloadQueue.resumeJob.mockImplementation((id) => id === 'job-1');
   downloadQueue.getJobs.mockReturnValue([
     { id: 'job-1', url: 'https://example.com/video', status: 'completed', progress: 100, filename: 'video.mp4', title: 'Test Video', createdAt: Date.now(), options: {} }
   ]);
@@ -259,18 +273,18 @@ describe('API Endpoints', () => {
   });
 
   describe('DELETE /api/download/queue/:id', () => {
-    it('returns 200 with success when cancelling existing job', async () => {
+    it('returns 200 with success when removing existing job', async () => {
       const res = await request(app)
-        .delete('/api/download/queue/job-1')
+        .del('/api/download/queue/job-1')
         .expect(200);
-      expect(res.body).toEqual({ success: true, message: 'Job cancelled' });
+      expect(res.body).toEqual({ success: true, message: 'Job removed' });
     });
 
     it('returns 404 when job not found', async () => {
       const res = await request(app)
-        .delete('/api/download/queue/nonexistent')
+        .del('/api/download/queue/nonexistent')
         .expect(404);
-      expect(res.body).toEqual({ error: 'Job not found or already finished' });
+      expect(res.body).toEqual({ error: 'Job not found' });
     });
   });
 

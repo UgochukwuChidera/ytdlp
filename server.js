@@ -3,12 +3,15 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import os from 'os';
+import { spawn, exec } from 'child_process';
 import ytDlp from 'yt-dlp-exec';
 import {
     checkBinaries,
     getBinDir,
     downloadBinaries,
+    downloadYtdlp,
+    downloadFfmpeg,
     getLatestYtdlpVersion,
     getLatestFfmpegVersion,
 } from './src/binary-manager.js';
@@ -18,7 +21,11 @@ import {
     getJob,
     cancelJob,
     cancelAll,
+    deleteJob,
+    clearJobs,
+    resumeJob,
     onProgress,
+    processQueue,
     getConcurrency,
     setConcurrency,
 } from './src/download-queue.js';
@@ -109,6 +116,19 @@ app.get('/api/updates', async (req, res) => {
     }
 });
 
+function versionLte(current, latest) {
+    if (!current) return false;
+    const curParts = current.split(/[. ]/).map(s => parseInt(s, 10));
+    const latParts = latest.split(/[. ]/).map(s => parseInt(s, 10));
+    for (let i = 0; i < Math.max(curParts.length, latParts.length); i++) {
+        const c = curParts[i] || 0;
+        const l = latParts[i] || 0;
+        if (c < l) return true;
+        if (c > l) return false;
+    }
+    return true;
+}
+
 app.get('/api/setup', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -148,18 +168,91 @@ app.get('/api/setup', async (req, res) => {
 
         sendMsg({ step: 'download', status: 'starting' });
 
-        await downloadBinaries({
-            onProgress: (name, percent) => {
-                sendMsg({ step: name, status: 'downloading', percent });
-            },
-        });
+        const currentBinaries = checkBinaries();
+        const curYtdlp = currentBinaries.find(b => b.name === 'yt-dlp');
+        const curFfmpeg = currentBinaries.find(b => b.name === 'ffmpeg');
 
-        sendMsg({ step: 'yt-dlp', status: 'done', percent: 100 });
-        sendMsg({ step: 'ffmpeg', status: 'done', percent: 100 });
+        if (curYtdlp && !curYtdlp.corrupt && versionLte(latestYtdlp, curYtdlp.version)) {
+            sendMsg({ step: 'yt-dlp', status: 'done', percent: 100, skipped: true });
+        } else {
+            await downloadYtdlp((name, percent) => {
+                sendMsg({ step: name, status: 'downloading', percent });
+            });
+            sendMsg({ step: 'yt-dlp', status: 'done', percent: 100 });
+        }
+
+        if (curFfmpeg && !curFfmpeg.corrupt && versionLte(latestFfmpeg, curFfmpeg.version)) {
+            sendMsg({ step: 'ffmpeg', status: 'done', percent: 100, skipped: true });
+        } else {
+            await downloadFfmpeg((name, percent) => {
+                sendMsg({ step: name, status: 'downloading', percent });
+            });
+            sendMsg({ step: 'ffmpeg', status: 'done', percent: 100 });
+        }
+
         sendMsg({ step: 'all', status: 'done' });
         res.end();
     } catch (err) {
         console.error('Setup error:', err);
+        sendMsg({ step: 'error', error: err.message });
+        res.end();
+    }
+});
+
+app.get('/api/setup/download/:binary', async (req, res) => {
+    const { binary } = req.params;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    let sendMsg = (msg) => {
+        try { res.write(`data: ${JSON.stringify(msg)}\n\n`); } catch {}
+    };
+
+    req.on('close', () => {
+        sendMsg = () => {};
+    });
+
+    try {
+        const [latestVersion, latestFfmpegVersion] = await Promise.all([
+            getLatestYtdlpVersion(),
+            getLatestFfmpegVersion(),
+        ]);
+
+        const currentBinaries = checkBinaries();
+
+        if (binary === 'yt-dlp') {
+            const cur = currentBinaries.find(b => b.name === 'yt-dlp');
+            if (cur && !cur.corrupt && versionLte(latestVersion, cur.version)) {
+                sendMsg({ step: 'yt-dlp', status: 'done', percent: 100, skipped: true });
+            } else {
+                sendMsg({ step: 'yt-dlp', status: 'starting', percent: 0 });
+                await downloadYtdlp((name, pct) => {
+                    sendMsg({ step: 'yt-dlp', status: 'downloading', percent: pct });
+                });
+                sendMsg({ step: 'yt-dlp', status: 'done', percent: 100 });
+            }
+        } else if (binary === 'ffmpeg') {
+            const cur = currentBinaries.find(b => b.name === 'ffmpeg');
+            if (cur && !cur.corrupt && versionLte(latestFfmpegVersion, cur.version)) {
+                sendMsg({ step: 'ffmpeg', status: 'done', percent: 100, skipped: true });
+            } else {
+                sendMsg({ step: 'ffmpeg', status: 'starting', percent: 0 });
+                await downloadFfmpeg((name, pct) => {
+                    sendMsg({ step: 'ffmpeg', status: 'downloading', percent: pct });
+                });
+                sendMsg({ step: 'ffmpeg', status: 'done', percent: 100 });
+            }
+        } else {
+            sendMsg({ step: 'error', error: `Unknown binary: ${binary}` });
+            res.end();
+            return;
+        }
+        sendMsg({ step: 'all', status: 'done' });
+        res.end();
+    } catch (err) {
+        console.error(`${binary} download error:`, err);
         sendMsg({ step: 'error', error: err.message });
         res.end();
     }
@@ -367,14 +460,13 @@ app.post('/api/download/queue/batch', (req, res) => {
     try {
         const jobs = urls.map(url => {
             const id = addJob(url, {
-                url,
                 format: req.body.format,
                 quality: req.body.quality,
                 audioOnly: req.body.audioOnly,
                 audioFormat: req.body.audioFormat,
                 outputTemplate: req.body.outputTemplate,
                 options: req.body.options,
-                title: title || url
+                title: title || url,
             });
             return { jobId: id, url };
         });
@@ -408,12 +500,43 @@ app.get('/api/download/queue/:id', (req, res) => {
 
 app.delete('/api/download/queue/:id', (req, res) => {
     try {
-        const cancelled = cancelJob(req.params.id);
-        if (!cancelled) return res.status(404).json({ error: 'Job not found or already finished' });
-        res.json({ success: true, message: 'Job cancelled' });
+        const removed = deleteJob(req.params.id);
+        if (!removed) return res.status(404).json({ error: 'Job not found' });
+        res.json({ success: true, message: 'Job removed' });
     } catch (error) {
-        console.error('Queue cancel error:', error);
-        res.status(500).json({ error: 'Failed to cancel job' });
+        console.error('Queue delete error:', error);
+        res.status(500).json({ error: 'Failed to remove job' });
+    }
+});
+
+app.post('/api/download/queue/clear', (req, res) => {
+    try {
+        const { status } = req.body;
+        const count = clearJobs(status || 'all');
+        res.json({ success: true, cleared: count });
+    } catch (error) {
+        console.error('Queue clear error:', error);
+        res.status(500).json({ error: 'Failed to clear jobs' });
+    }
+});
+
+app.post('/api/download/queue/resume/:id', (req, res) => {
+    try {
+        const ok = resumeJob(req.params.id);
+        if (!ok) return res.status(404).json({ error: 'Job not found or not paused' });
+        res.json({ success: true, message: 'Job resumed' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to resume job' });
+    }
+});
+
+app.post('/api/download/queue/start-all', (req, res) => {
+    try {
+        processQueue();
+        res.json({ success: true, message: 'Starting queued jobs' });
+    } catch (error) {
+        console.error('Queue start error:', error);
+        res.status(500).json({ error: 'Failed to start jobs' });
     }
 });
 
@@ -610,6 +733,27 @@ app.post('/api/download/concurrency', (req, res) => {
     }
 });
 
+
+const folderPaths = {
+    downloads: downloadsDir,
+    bin: path.join(os.homedir(), '.local', 'share', 'ytdlp-app', 'bin'),
+};
+
+app.post('/api/open-folder', (req, res) => {
+    try {
+        const { folder } = req.body;
+        const dir = folderPaths[folder];
+        if (!dir) return res.status(400).json({ error: 'Unknown folder' });
+        if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Folder not found' });
+        const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+        exec(`"${cmd}" "${dir}"`, (err) => {
+            if (err) return res.status(500).json({ error: 'Failed to open folder' });
+            res.json({ success: true });
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to open folder' });
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 if (process.env.NODE_ENV !== 'test') {

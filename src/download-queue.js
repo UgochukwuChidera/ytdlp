@@ -33,6 +33,7 @@ function generateId() {
 
 function emitProgress(job) {
     const snapshot = { ...job, options: { ...job.options } };
+    delete snapshot._process;
     for (const cb of progressCallbacks) {
         try { cb(snapshot); } catch {}
     }
@@ -40,6 +41,7 @@ function emitProgress(job) {
 
 export function setConcurrency(n) {
     maxConcurrency = Math.max(1, Math.min(MAX_CONCURRENCY, n));
+    processQueue();
 }
 
 export function getConcurrency() {
@@ -49,10 +51,11 @@ export function getConcurrency() {
 export function addJob(url, options = {}) {
     ensureBinDir();
     const id = generateId();
+    const { title: titleOption, ...restOptions } = options;
     const job = {
         id,
         url,
-        title: url,
+        title: titleOption || url,
         status: 'queued',
         progress: 0,
         createdAt: Date.now(),
@@ -61,13 +64,12 @@ export function addJob(url, options = {}) {
             quality: 'best',
             audioOnly: false,
             audioFormat: 'mp3',
-            ...options,
+            ...restOptions,
         },
         _process: null,
     };
     jobs.set(id, job);
     emitProgress(job);
-    processQueue();
     return id;
 }
 
@@ -97,12 +99,48 @@ export function cancelJob(id) {
     }
     if (job.status === 'downloading') {
         jobCancelFlags.add(id);
+        job.status = 'paused';
+        emitProgress(job);
         if (job._process) {
             try { job._process.kill('SIGTERM'); } catch {}
         }
         return true;
     }
     return false;
+}
+
+export function deleteJob(id) {
+    const job = jobs.get(id);
+    if (!job) return false;
+    if (job.status === 'downloading') {
+        jobCancelFlags.add(id);
+        if (job._process) {
+            try { job._process.kill('SIGTERM'); } catch {}
+        }
+    }
+    jobs.delete(id);
+    emitProgress({ ...job, status: 'removed' });
+    return true;
+}
+
+export function clearJobs(filter) {
+    const ids = Array.from(jobs.entries())
+        .filter(([, j]) => !filter || filter === 'all' || j.status === filter)
+        .map(([id]) => id);
+    for (const id of ids) {
+        deleteJob(id);
+    }
+    return ids.length;
+}
+
+export function resumeJob(id) {
+    const job = jobs.get(id);
+    if (!job || job.status !== 'paused') return false;
+    job.status = 'queued';
+    job.progress = 0;
+    emitProgress(job);
+    processQueue();
+    return true;
 }
 
 export function cancelAll() {
@@ -119,7 +157,7 @@ export function onProgress(callback) {
     };
 }
 
-async function processQueue() {
+async function processQueueInternal() {
     if (activeCount >= maxConcurrency) return;
 
     const queued = Array.from(jobs.values()).find(j => j.status === 'queued');
@@ -131,7 +169,11 @@ async function processQueue() {
     emitProgress(queued);
     await executeJob(queued);
     activeCount--;
-    processQueue();
+    processQueueInternal();
+}
+
+export function processQueue() {
+    processQueueInternal();
 }
 
 async function executeJob(job) {
@@ -185,6 +227,7 @@ async function executeJob(job) {
 
     args.push('--newline');
     args.push('--progress');
+    args.push('--no-simulate');
     args.push(job.url);
 
     return new Promise((resolve) => {
@@ -214,18 +257,22 @@ async function executeJob(job) {
 
         proc.on('close', (code) => {
             job._process = null;
+            const wasCancelled = jobCancelFlags.has(job.id);
             jobCancelFlags.delete(job.id);
 
-            if (code === 0) {
+            if (wasCancelled) {
+                emitProgress(job);
+            } else if (code === 0) {
                 job.status = 'completed';
                 job.progress = 100;
                 const lines = filename.trim().split('\n');
                 job.filename = path.basename(lines[lines.length - 1].trim());
+                emitProgress(job);
             } else {
                 job.status = 'failed';
                 job.error = errData.trim() || `Exit code ${code}`;
+                emitProgress(job);
             }
-            emitProgress(job);
             resolve();
         });
 
