@@ -63,15 +63,58 @@ function getBinaryVersion(binPath) {
     }
 }
 
+function makeExecutable(filePath) {
+    try { fs.chmodSync(filePath, 0o755); } catch {}
+}
+
+function getYtdlpAssetName() {
+    const arch = os.arch();
+    const platform = os.platform();
+    if (platform === 'linux') {
+        return arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+    }
+    if (platform === 'darwin') {
+        return arch === 'arm64' ? 'yt-dlp_macos_aarch64' : 'yt-dlp_macos';
+    }
+    if (platform === 'win32') {
+        return 'yt-dlp.exe';
+    }
+    return 'yt-dlp_linux';
+}
+
+const PLATFORM_ALIASES = {
+    'yt-dlp': {
+        linux: ['yt-dlp_linux', 'yt-dlp_linux_aarch64'],
+        darwin: ['yt-dlp_macos', 'yt-dlp_macos_aarch64'],
+        win32: ['yt-dlp.exe'],
+    },
+};
+
+export function resolveBinary(name) {
+    const exact = getBinaryPath(name);
+    if (fs.existsSync(exact)) return exact;
+    const aliases = PLATFORM_ALIASES[name];
+    if (aliases) {
+        const platform = os.platform();
+        const candidates = aliases[platform] || [];
+        for (const alias of candidates) {
+            const aliasPath = getBinaryPath(alias);
+            if (fs.existsSync(aliasPath)) return aliasPath;
+        }
+    }
+    return exact;
+}
+
 export function checkBinaries() {
     ensureBinDir();
     const binaries = ['yt-dlp', 'ffmpeg', 'ffprobe'];
     return binaries.map((name) => {
-        const binPath = getBinaryPath(name);
+        const binPath = resolveBinary(name);
         const exists = fs.existsSync(binPath);
         let version;
         let corrupt = false;
         if (exists) {
+            makeExecutable(binPath);
             version = getBinaryVersion(binPath);
             if (!version) {
                 corrupt = true;
@@ -195,9 +238,10 @@ export async function downloadFile(url, dest, onProgress) {
 
 export async function downloadYtdlp(onProgress) {
     const ytdlpPath = getBinaryPath('yt-dlp');
-    const url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux';
+    const assetName = getYtdlpAssetName();
+    const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${assetName}`;
     await downloadFile(url, ytdlpPath, (p) => onProgress('yt-dlp', p));
-    fs.chmodSync(ytdlpPath, 0o755);
+    makeExecutable(ytdlpPath);
 }
 
 export async function downloadFfmpeg(onProgress) {
@@ -208,10 +252,8 @@ export async function downloadFfmpeg(onProgress) {
     return new Promise((resolve, reject) => {
         exec(`tar -xf "${tarPath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`, (error) => {
             if (error) return reject(error);
-            try {
-                fs.chmodSync(getBinaryPath('ffmpeg'), 0o755);
-                fs.chmodSync(getBinaryPath('ffprobe'), 0o755);
-            } catch {}
+            makeExecutable(getBinaryPath('ffmpeg'));
+            makeExecutable(getBinaryPath('ffprobe'));
             fs.unlink(tarPath, () => {});
             resolve();
         });
@@ -234,10 +276,8 @@ export async function extractFfmpeg() {
     return new Promise((resolve, reject) => {
         exec(`tar -xf "${tarPath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`, (error) => {
             if (error) return reject(error);
-            try {
-                fs.chmodSync(getBinaryPath('ffmpeg'), 0o755);
-                fs.chmodSync(getBinaryPath('ffprobe'), 0o755);
-            } catch {}
+            makeExecutable(getBinaryPath('ffmpeg'));
+            makeExecutable(getBinaryPath('ffprobe'));
             fs.unlink(tarPath, () => {});
             resolve();
         });

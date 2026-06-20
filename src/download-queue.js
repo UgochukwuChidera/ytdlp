@@ -3,7 +3,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { getBinDir, ensureBinDir } from './binary-manager.js';
+import { getBinDir, ensureBinDir, resolveBinary } from './binary-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -178,7 +178,7 @@ export function processQueue() {
 
 async function executeJob(job) {
     const binDir = getBinDir();
-    const ytdlpBin = path.join(binDir, 'yt-dlp');
+    const ytdlpBin = resolveBinary('yt-dlp');
     const downloadsDir = path.join(projectRoot, 'downloads');
 
     if (!fs.existsSync(downloadsDir)) {
