@@ -15,6 +15,7 @@ import {
     getLatestYtdlpVersion,
     getLatestFfmpegVersion,
 } from './src/binary-manager.js';
+import { DOWNLOADS_DIR, BIN_DIR } from './src/paths.js';
 import {
     addJob,
     getJobs,
@@ -42,7 +43,7 @@ const YTDLP_OPTIONS_DEFAULTS = JSON.parse(JSON.stringify(YTDLP_OPTIONS));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const downloadsDir = path.join(__dirname, 'downloads');
+const downloadsDir = DOWNLOADS_DIR;
 
 const QUALITY_MAP = {
     best: 'bestvideo+bestaudio/best',
@@ -736,7 +737,7 @@ app.post('/api/download/concurrency', (req, res) => {
 
 const folderPaths = {
     downloads: downloadsDir,
-    bin: path.join(os.homedir(), '.local', 'share', 'ytdlp-app', 'bin'),
+    bin: BIN_DIR,
 };
 
 app.post('/api/open-folder', (req, res) => {
