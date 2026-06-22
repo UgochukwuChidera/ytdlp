@@ -2,12 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
-import { getBinDir, ensureBinDir, resolveBinary } from './binary-manager.js';
+import { getBinDir, resolveBinary } from './binary-manager.js';
+import { DOWNLOADS_DIR, BIN_DIR, ensureDir } from './paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
 
 const DEFAULT_CONCURRENCY = 3;
 const MAX_CONCURRENCY = 5;
@@ -49,7 +46,7 @@ export function getConcurrency() {
 }
 
 export function addJob(url, options = {}) {
-    ensureBinDir();
+    ensureDir(BIN_DIR);
     const id = generateId();
     const { title: titleOption, ...restOptions } = options;
     const job = {
@@ -179,7 +176,7 @@ export function processQueue() {
 async function executeJob(job) {
     const binDir = getBinDir();
     const ytdlpBin = resolveBinary('yt-dlp');
-    const downloadsDir = path.join(projectRoot, 'downloads');
+    const downloadsDir = DOWNLOADS_DIR;
 
     if (!fs.existsSync(downloadsDir)) {
         fs.mkdirSync(downloadsDir, { recursive: true });
