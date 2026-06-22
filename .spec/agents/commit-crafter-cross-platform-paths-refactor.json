@@ -1,0 +1,13 @@
+{
+  "agent": "commit-crafter",
+  "commit_hash": "88fb7dd",
+  "files_committed": [
+    "src/binary-manager.js",
+    "src/paths.js",
+    ".spec/agents/commit-crafter-cross-platform-paths.json",
+    ".spec/agents/executor-cross-platform-paths.json",
+    ".spec/agents/executor-paths-integration.json",
+    ".spec/agents/git-wrangler-cross-platform-commit.json"
+  ],
+  "last_action": "refactor: cross-platform paths module, ffmpeg download, binary resolution"
+}
