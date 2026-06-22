@@ -1,0 +1,11 @@
+{
+  "agent": "git-wrangler",
+  "action_taken": "staged and committed src/download-queue.js",
+  "branches_affected": ["main"],
+  "status": "clean for staged file",
+  "commit_hash": "2412a15",
+  "commit_message": "refactor(download-queue): migrate to centralized path management from paths.js",
+  "files_changed": ["src/download-queue.js"],
+  "insertions": 4,
+  "deletions": 7
+}

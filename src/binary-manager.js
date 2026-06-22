@@ -2,53 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
-import { pipeline } from 'stream/promises';
 import { createWriteStream } from 'fs';
-import { execSync, exec } from 'child_process';
+import { exec, execSync, execFileSync } from 'child_process';
 import os from 'os';
-import { fileURLToPath } from 'url';
+import { BIN_DIR, DATA_DIR, getBinDir, ensureDir } from './paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
-
-const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'ytdlp-app');
-const BIN_DIR = path.join(DATA_DIR, 'bin');
-const OLD_BIN_DIR = path.join(projectRoot, 'bin');
-
-export function getBinDir() {
-    return BIN_DIR;
-}
-
-export function ensureBinDir() {
-    if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (!fs.existsSync(BIN_DIR)) {
-        fs.mkdirSync(BIN_DIR, { recursive: true });
-    }
-    migrateOldBinaries();
-}
-
-function migrateOldBinaries() {
-    if (!fs.existsSync(OLD_BIN_DIR)) return;
-    const entries = fs.readdirSync(OLD_BIN_DIR);
-    for (const entry of entries) {
-        const oldPath = path.join(OLD_BIN_DIR, entry);
-        const newPath = path.join(BIN_DIR, entry);
-        if (!fs.existsSync(newPath)) {
-            try {
-                fs.cpSync(oldPath, newPath, { recursive: true, dereference: true });
-            } catch {
-                try {
-                    fs.copyFileSync(oldPath, newPath);
-                } catch {
-                    // skip on failure
-                }
-            }
-        }
-    }
-}
+export { getBinDir, BIN_DIR };
 
 function getBinaryPath(name) {
     return path.join(BIN_DIR, name);
@@ -56,8 +15,8 @@ function getBinaryPath(name) {
 
 function getBinaryVersion(binPath) {
     try {
-        const output = execSync(`"${binPath}" --version 2>/dev/null`).toString().trim();
-        return output.split('\n')[0] || 'unknown';
+        const output = execFileSync(binPath, ['--version'], { encoding: 'utf8', timeout: 10000 });
+        return output.trim().split('\n')[0] || 'unknown';
     } catch {
         return undefined;
     }
@@ -88,6 +47,16 @@ const PLATFORM_ALIASES = {
         darwin: ['yt-dlp_macos', 'yt-dlp_macos_aarch64'],
         win32: ['yt-dlp.exe'],
     },
+    'ffmpeg': {
+        linux: ['ffmpeg'],
+        darwin: ['ffmpeg'],
+        win32: ['ffmpeg.exe'],
+    },
+    'ffprobe': {
+        linux: ['ffprobe'],
+        darwin: ['ffprobe'],
+        win32: ['ffprobe.exe'],
+    },
 };
 
 export function resolveBinary(name) {
@@ -106,7 +75,8 @@ export function resolveBinary(name) {
 }
 
 export function checkBinaries() {
-    ensureBinDir();
+    ensureDir(DATA_DIR);
+    ensureDir(BIN_DIR);
     const binaries = ['yt-dlp', 'ffmpeg', 'ffprobe'];
     return binaries.map((name) => {
         const binPath = resolveBinary(name);
@@ -151,6 +121,37 @@ export async function getLatestYtdlpVersion() {
     });
 }
 
+function getFfmpegAssetName() {
+    const arch = os.arch();
+    const platform = os.platform();
+    if (platform === 'linux') {
+        return arch === 'arm64' ? 'ffmpeg-release-arm64-static.tar.xz' : 'ffmpeg-release-amd64-static.tar.xz';
+    }
+    if (platform === 'darwin') {
+        return arch === 'arm64' ? 'ffmpeg-release-arm64-static.tar.xz' : 'ffmpeg-release-amd64-static.tar.xz';
+    }
+    if (platform === 'win32') {
+        return 'ffmpeg-release-full.7z';
+    }
+    return 'ffmpeg-release-amd64-static.tar.xz';
+}
+
+function getFfmpegBaseUrl() {
+    const platform = os.platform();
+    if (platform === 'win32') {
+        return 'https://www.gyan.dev/ffmpeg/builds';
+    }
+    return 'https://johnvansickle.com/ffmpeg/releases';
+}
+
+function getFfmpegExtractArgs(archivePath) {
+    const platform = os.platform();
+    if (platform === 'win32') {
+        return `"${archivePath}" -o"${BIN_DIR}" ffmpeg.exe ffprobe.exe`;
+    }
+    return `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`;
+}
+
 export async function getLatestFfmpegVersion() {
     return new Promise((resolve, reject) => {
         https.get('https://johnvansickle.com/ffmpeg/', {
@@ -167,7 +168,7 @@ export async function getLatestFfmpegVersion() {
 }
 
 export async function downloadFile(url, dest, onProgress) {
-    ensureBinDir();
+    ensureDir(BIN_DIR);
     const protocol = url.startsWith('https') ? https : http;
     let existingSize = 0;
     try { existingSize = fs.statSync(dest).size; } catch {}
@@ -245,23 +246,31 @@ export async function downloadYtdlp(onProgress) {
 }
 
 export async function downloadFfmpeg(onProgress) {
-    const tarPath = path.join(BIN_DIR, 'ffmpeg.tar.xz');
-    const url = 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz';
-    await downloadFile(url, tarPath, (p) => onProgress('ffmpeg', p));
+    const platform = os.platform();
+    const baseUrl = getFfmpegBaseUrl();
+    const assetName = getFfmpegAssetName();
+    const archivePath = path.join(BIN_DIR, assetName);
+    const url = `${baseUrl}/${assetName}`;
+
+    await downloadFile(url, archivePath, (p) => onProgress('ffmpeg', p));
+
+    const extractCmd = platform === 'win32'
+        ? `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" "${assetName.replace('.7z', '')}/bin/ffmpeg.exe" "${assetName.replace('.7z', '')}/bin/ffprobe.exe"`
+        : `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`;
 
     return new Promise((resolve, reject) => {
-        exec(`tar -xf "${tarPath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`, (error) => {
+        exec(extractCmd, (error) => {
             if (error) return reject(error);
             makeExecutable(getBinaryPath('ffmpeg'));
             makeExecutable(getBinaryPath('ffprobe'));
-            fs.unlink(tarPath, () => {});
+            fs.unlink(archivePath, () => {});
             resolve();
         });
     });
 }
 
 export async function downloadBinaries(options = {}) {
-    ensureBinDir();
+    ensureDir(BIN_DIR);
     const { onProgress = () => {} } = options;
 
     await Promise.all([
@@ -271,14 +280,21 @@ export async function downloadBinaries(options = {}) {
 }
 
 export async function extractFfmpeg() {
-    const tarPath = path.join(BIN_DIR, 'ffmpeg.tar.xz');
-    if (!fs.existsSync(tarPath)) return;
+    const platform = os.platform();
+    const assetName = getFfmpegAssetName();
+    const archivePath = path.join(BIN_DIR, assetName);
+    if (!fs.existsSync(archivePath)) return;
+    
+    const extractCmd = platform === 'win32'
+        ? `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" "${assetName.replace('.7z', '')}/bin/ffmpeg.exe" "${assetName.replace('.7z', '')}/bin/ffprobe.exe"`
+        : `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`;
+
     return new Promise((resolve, reject) => {
-        exec(`tar -xf "${tarPath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`, (error) => {
+        exec(extractCmd, (error) => {
             if (error) return reject(error);
             makeExecutable(getBinaryPath('ffmpeg'));
             makeExecutable(getBinaryPath('ffprobe'));
-            fs.unlink(tarPath, () => {});
+            fs.unlink(archivePath, () => {});
             resolve();
         });
     });
