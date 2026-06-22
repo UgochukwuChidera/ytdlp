@@ -767,8 +767,8 @@
         .fa-download::before, .fa-cloud-arrow-down::before { content: "v"; font-weight: 800; }
         .fa-magnifying-glass::before { content: "?"; font-weight: 800; }
         .fa-list::before, .fa-list-check::before, .fa-inbox::before { content: "="; font-weight: 800; }
-        .fa-toolbox::before { content: "🔧"; font-size: .75em; font-weight: 800; }
-        .fa-folder-open::before { content: "📁"; font-size: .85em; font-weight: 800; }
+        .fa-toolbox::before { content: ""; }
+        .fa-folder-open::before { content: ""; }
         .fa-users::before, .fa-circle-user::before { content: "@"; font-weight: 800; }
         .fa-sliders::before { content: "::"; font-weight: 800; }
         .fa-moon::before { content: "◐"; }
@@ -1032,7 +1032,7 @@
                     <div id="updateAlert" class="status-card hidden" style="background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber),transparent 65%);color:var(--amber)"><p id="updateAlertText" style="margin:0">An update is available for yt-dlp.</p></div>
                     <div style="display:flex;gap:var(--space-sm);flex-wrap:wrap;align-items:center">
                         <button id="btnSetupDownload" class="btn btn-primary" type="button"><i class="fa-solid fa-download"></i>Download yt-dlp &amp; ffmpeg</button>
-                        <button id="btnOpenBinFolder" class="btn btn-quiet" type="button" title="Open binary folder"><i class="fa-solid fa-folder-open"></i></button>
+                        <button id="btnOpenBinFolder" class="btn btn-quiet" type="button" title="Open binary folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></button>
                     </div>
                 </section>
                 <section id="setupProgress" class="panel panel-pad hidden setup-progress">
@@ -1047,9 +1047,9 @@
             <main class="page">
                 <div class="page-head"><div><div class="eyebrow">Downloads</div><h1>Local files.</h1><p class="lede">Review completed downloads, fetch files from the server, or clean up storage.</p></div></div>
                 <section class="panel panel-pad">
-                    <div class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><h2 style="margin:0">Downloaded Files</h2><button id="btnOpenDownloadsFolder" class="btn btn-quiet" type="button" style="margin-left:auto" title="Open downloads folder"><i class="fa-solid fa-folder-open"></i></button></div>
+                    <div class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><h2 style="margin:0">Downloaded Files</h2><button id="btnOpenDownloadsFolder" class="btn btn-quiet" type="button" style="margin-left:auto" title="Open downloads folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></button></div>
                     <div id="filesLoading" class="loading-state"><div class="loader"></div><p>Loading files...</p></div>
-                    <div id="filesEmpty" class="empty-state hidden"><div class="empty-icon"><i class="fa-solid fa-folder-open"></i></div><p class="empty-title">No downloads yet</p><p class="empty-copy">Downloaded files will appear here.</p></div>
+                    <div id="filesEmpty" class="empty-state hidden"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" style="opacity:0.5"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></div><p class="empty-title">No downloads yet</p><p class="empty-copy">Downloaded files will appear here.</p></div>
                     <div id="filesTableWrapper" class="table-wrap hidden"><table><thead><tr><th>Filename</th><th>Size</th><th>Date</th><th style="text-align:right">Action</th></tr></thead><tbody id="filesBody"></tbody></table></div>
                 </section>
             </main>
