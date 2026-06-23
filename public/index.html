@@ -573,6 +573,88 @@
         tbody tr:last-child td { border-bottom: 0; }
         tbody tr:hover td { background: color-mix(in srgb, var(--brand-soft), transparent 58%); }
 
+        /* File action dropdown menu */
+        .dropdown-container {
+            position: relative;
+            display: inline-flex;
+        }
+        .dropdown-trigger {
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--muted);
+            cursor: pointer;
+            transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: 0;
+            padding: 0;
+        }
+        .dropdown-trigger:hover {
+            background: var(--surface-2);
+            color: var(--text);
+            border-color: var(--line);
+        }
+        .dropdown-trigger:active {
+            transform: translateY(1px);
+        }
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            z-index: 50;
+            min-width: 140px;
+            margin-top: 4px;
+            padding: 4px;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            display: none;
+            overflow: hidden;
+        }
+        .dropdown-menu.open {
+            display: block;
+        }
+        .dropdown-item {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            white-space: nowrap;
+            transition: background 100ms ease;
+        }
+        .dropdown-item:hover {
+            background: var(--surface-2);
+        }
+        .dropdown-item svg, .dropdown-item i {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            color: var(--muted);
+        }
+        .dropdown-item.danger {
+            color: var(--red);
+        }
+        .dropdown-item.danger:hover {
+            background: var(--red-soft);
+        }
+
         .queue-controls {
             display: flex;
             align-items: center;
@@ -1048,6 +1130,7 @@
                 <div class="page-head"><div><div class="eyebrow">Downloads</div><h1>Local files.</h1><p class="lede">Review completed downloads, fetch files from the server, or clean up storage.</p></div></div>
                 <section class="panel panel-pad">
                     <div class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><h2 style="margin:0">Downloaded Files</h2><button id="btnOpenDownloadsFolder" class="btn btn-quiet" type="button" style="margin-left:auto" title="Open downloads folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></button></div>
+                    <input type="text" id="filesSearchInput" placeholder="Search downloaded files..." style="margin-bottom:12px">
                     <div id="filesLoading" class="loading-state"><div class="loader"></div><p>Loading files...</p></div>
                     <div id="filesEmpty" class="empty-state hidden"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" style="opacity:0.5"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></div><p class="empty-title">No downloads yet</p><p class="empty-copy">Downloaded files will appear here.</p></div>
                     <div id="filesTableWrapper" class="table-wrap hidden"><table><thead><tr><th>Filename</th><th>Size</th><th>Date</th><th style="text-align:right">Action</th></tr></thead><tbody id="filesBody"></tbody></table></div>
