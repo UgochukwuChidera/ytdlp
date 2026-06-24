@@ -1112,42 +1112,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     </td>
                 `;
                 if (filesBody) filesBody.appendChild(tr);
-
-                // Wire up dropdown trigger (click to toggle)
-                const dropdownTrigger = tr.querySelector('.dropdown-trigger');
-                const dropdownMenu = tr.querySelector('.dropdown-menu');
-                if (dropdownTrigger && dropdownMenu) {
-                    dropdownTrigger.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        // Close all other open dropdowns
-                        document.querySelectorAll('.dropdown-menu.open').forEach(m => {
-                            if (m !== dropdownMenu) m.classList.remove('open');
-                        });
-                        dropdownMenu.classList.toggle('open');
-                    });
-                }
-
-                // Wire up Open button
-                const openBtn = tr.querySelector('.dropdown-open');
-                if (openBtn) {
-                    openBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const fn = decodeURIComponent(openBtn.dataset.filename);
-                        if (dropdownMenu) dropdownMenu.classList.remove('open');
-                        openFile(fn);
-                    });
-                }
-
-                // Wire up Delete button
-                const delBtn = tr.querySelector('.dropdown-delete');
-                if (delBtn) {
-                    delBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const fn = decodeURIComponent(delBtn.dataset.filename);
-                        if (dropdownMenu) dropdownMenu.classList.remove('open');
-                        deleteFile(fn, tr);
-                    });
-                }
             });
         } catch (error) {
             console.error('Files fetch error:', error);
@@ -1176,11 +1140,55 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Close dropdowns when clicking elsewhere on the page
-    document.addEventListener("click", () => {
-        document.querySelectorAll(".dropdown-menu.open").forEach(m => {
-            m.classList.remove("open");
-        });
+    // Event delegation for all dropdown interactions
+    document.addEventListener("click", (e) => {
+        const target = e.target;
+        
+        // 1. Toggle dropdown on trigger click
+        const trigger = target.closest('.dropdown-trigger');
+        if (trigger) {
+            const container = trigger.closest('.dropdown-container');
+            const menu = container ? container.querySelector('.dropdown-menu') : null;
+            if (menu) {
+                e.stopPropagation();
+                // Close all other open dropdowns
+                document.querySelectorAll('.dropdown-menu.open').forEach(m => {
+                    if (m !== menu) m.classList.remove('open');
+                });
+                menu.classList.toggle('open');
+                return;
+            }
+        }
+        
+        // 2. Handle Open button click
+        const openBtn = target.closest('.dropdown-open');
+        if (openBtn) {
+            e.stopPropagation();
+            const fn = decodeURIComponent(openBtn.dataset.filename);
+            const menu = openBtn.closest('.dropdown-menu');
+            if (menu) menu.classList.remove('open');
+            openFile(fn);
+            return;
+        }
+        
+        // 3. Handle Delete button click
+        const delBtn = target.closest('.dropdown-delete');
+        if (delBtn) {
+            e.stopPropagation();
+            const fn = decodeURIComponent(delBtn.dataset.filename);
+            const tr = delBtn.closest('tr');
+            const menu = delBtn.closest('.dropdown-menu');
+            if (menu) menu.classList.remove('open');
+            if (tr) deleteFile(fn, tr);
+            return;
+        }
+        
+        // 4. Close dropdowns on outside click (not on any dropdown element)
+        if (!target.closest('.dropdown-menu') && !target.closest('.dropdown-trigger')) {
+            document.querySelectorAll('.dropdown-menu.open').forEach(m => {
+                m.classList.remove('open');
+            });
+        }
     });
 
         const deleteFile = async (filename, rowEl) => {
