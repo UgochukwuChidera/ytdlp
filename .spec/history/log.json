@@ -1,0 +1,16 @@
+[
+  {
+    "session_id": "ytdlp-app-2026-06-23",
+    "start_time": "2026-06-23T00:00:00Z",
+    "end_time": "2026-06-24T01:14:00Z",
+    "description": "Implement 5 changes to the ytdlp-app: add /api/open-file endpoint, add search bar to Downloads tab, replace Download link with dropdown menu, add CSS for dropdown, add search/filter functionality",
+    "agent_count": 17,
+    "agents_used": ["commit-crafter", "creator", "executor", "git-wrangler", "cleanup-agent"],
+    "files_created": 0,
+    "packages_installed": [],
+    "packages_removed": [],
+    "files_removed": 17,
+    "space_freed_bytes": 6088,
+    "status": "cleaned"
+  }
+]

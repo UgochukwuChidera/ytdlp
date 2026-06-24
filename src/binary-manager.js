@@ -14,9 +14,18 @@ function getBinaryPath(name) {
 }
 
 function getBinaryVersion(binPath) {
+    const name = path.basename(binPath).replace(/\.exe$/i, '').replace(/_linux.*|_macos.*/i, '');
+    const isFfBinary = name === 'ffmpeg' || name === 'ffprobe' || name === 'ffplay';
+    const versionFlag = isFfBinary ? '-version' : '--version';
     try {
-        const output = execFileSync(binPath, ['--version'], { encoding: 'utf8', timeout: 10000 });
-        return output.trim().split('\n')[0] || 'unknown';
+        const output = execFileSync(binPath, [versionFlag], { encoding: 'utf8', timeout: 10000 });
+        const firstLine = output.trim().split('\n')[0] || 'unknown';
+        if (isFfBinary) {
+            // e.g. "ffmpeg version N-125118-gf523577512-20260619 Copyright ..."
+            const m = firstLine.match(/version\s+(\S+)/);
+            return m ? m[1] : firstLine;
+        }
+        return firstLine;
     } catch {
         return undefined;
     }
@@ -160,7 +169,9 @@ export async function getLatestFfmpegVersion() {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
-                const match = data.match(/ffmpeg-(\d+\.\d+(?:\.\d+)?)/);
+                // The page shows "release: 7.0.2" — match that pattern
+                const match = data.match(/release:\s*(\d+\.\d+(?:\.\d+)?)/) ||
+                              data.match(/ffmpeg-(\\d+\\.\\d+(?:\\.\\d+)?)/);
                 resolve(match ? match[1] : 'unknown');
             });
         }).on('error', reject);

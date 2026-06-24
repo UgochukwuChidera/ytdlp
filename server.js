@@ -58,7 +58,10 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+// Serve Vue frontend build if available, fallback to public/
+const vueDist = path.join(__dirname, 'frontend', 'dist');
+const publicDir = path.join(__dirname, 'public');
+app.use(express.static(fs.existsSync(vueDist) ? vueDist : publicDir));
 
 if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
@@ -99,16 +102,28 @@ app.get('/api/updates', async (req, res) => {
         const ytDlpBin = binaries.find(b => b.name === 'yt-dlp');
         const ffmpegBin = binaries.find(b => b.name === 'ffmpeg');
 
+        function isUpdateAvailable(installed, latest) {
+            // Can't determine update if either version is missing/unknown
+            if (!installed || !latest || latest === 'unknown') return false;
+            // Only compare if both are the same format (both semver-like)
+            const isSemver = (v) => /^\d+\.\d+/.test(v);
+            if (isSemver(installed) && isSemver(latest)) {
+                return installed !== latest;
+            }
+            // Incomparable formats (e.g. git build vs semver) — can't determine
+            return false;
+        }
+
         res.json({
             ytDlp: {
                 installed: ytDlpBin?.version || null,
                 latest: latestYtdlp,
-                updateAvailable: ytDlpBin?.version ? ytDlpBin.version !== latestYtdlp : true,
+                updateAvailable: isUpdateAvailable(ytDlpBin?.version, latestYtdlp),
             },
             ffmpeg: {
                 installed: ffmpegBin?.version || null,
                 latest: latestFfmpeg,
-                updateAvailable: ffmpegBin?.version ? ffmpegBin.version !== latestFfmpeg : true,
+                updateAvailable: isUpdateAvailable(ffmpegBin?.version, latestFfmpeg),
             },
         });
     } catch (error) {
@@ -234,7 +249,7 @@ app.get('/api/setup/download/:binary', async (req, res) => {
                 });
                 sendMsg({ step: 'yt-dlp', status: 'done', percent: 100 });
             }
-        } else if (binary === 'ffmpeg') {
+        } else if (binary === 'ffmpeg' || binary === 'ffprobe') {
             const cur = currentBinaries.find(b => b.name === 'ffmpeg');
             if (cur && !cur.corrupt && versionLte(latestFfmpegVersion, cur.version)) {
                 sendMsg({ step: 'ffmpeg', status: 'done', percent: 100, skipped: true });
@@ -753,6 +768,39 @@ app.post('/api/open-folder', (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to open folder' });
+    }
+});
+
+app.post('/api/open-file/:filename', (req, res) => {
+    try {
+        const filename = req.params.filename;
+        if (filename.includes('/') || filename.includes('..')) {
+            return res.status(400).json({ error: 'Invalid filename' });
+        }
+        const filePath = path.join(downloadsDir, filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+        const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+        exec(`"${cmd}" "${filePath}"`, (err) => {
+            if (err) return res.status(500).json({ error: 'Failed to open file' });
+            res.json({ success: true });
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to open file' });
+    }
+});
+
+// SPA fallback for Vue Router - serve index.html for all non-API routes
+const indexPath = path.join(__dirname, 'frontend', 'dist', 'index.html');
+app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/assets/')) {
+        return next();
+    }
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        next();
     }
 });
 

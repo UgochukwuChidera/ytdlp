@@ -1095,20 +1095,57 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(date)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div class="flex items-center justify-end gap-2">
-                            <a href="/api/files/${encodeURIComponent(file.name || '')}" class="ripple-btn inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-lg shadow-indigo-500/20">
-                                <i class="fa-solid fa-download mr-1.5"></i>Download
-                            </a>
-                            <button class="btn-delete-file ripple-btn px-3 py-1.5 text-sm font-semibold rounded-xl text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all duration-200 shadow-sm hover:shadow-red-500/10" data-filename="${encodeURIComponent(file.name || '')}">
-                                <i class="fa-solid fa-trash-can mr-1.5"></i>Delete
-                            </button>
+                            <div class="dropdown-container">
+                                <button class="dropdown-trigger dropdown-btn" data-filename="${encodeURIComponent(file.name || '')}" title="More actions">...</button>
+                                <div class="dropdown-menu" data-filename="${encodeURIComponent(file.name || '')}">
+                                    <button class="dropdown-item dropdown-open" data-filename="${encodeURIComponent(file.name || '')}">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                        Open
+                                    </button>
+                                    <button class="dropdown-item dropdown-delete danger" data-filename="${encodeURIComponent(file.name || '')}">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </td>
                 `;
                 if (filesBody) filesBody.appendChild(tr);
-                const deleteBtn = tr.querySelector('.btn-delete-file');
-                if (deleteBtn) {
-                    deleteBtn.addEventListener('click', () => {
-                        deleteFile(file.name || '', tr);
+
+                // Wire up dropdown trigger (click to toggle)
+                const dropdownTrigger = tr.querySelector('.dropdown-trigger');
+                const dropdownMenu = tr.querySelector('.dropdown-menu');
+                if (dropdownTrigger && dropdownMenu) {
+                    dropdownTrigger.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        // Close all other open dropdowns
+                        document.querySelectorAll('.dropdown-menu.open').forEach(m => {
+                            if (m !== dropdownMenu) m.classList.remove('open');
+                        });
+                        dropdownMenu.classList.toggle('open');
+                    });
+                }
+
+                // Wire up Open button
+                const openBtn = tr.querySelector('.dropdown-open');
+                if (openBtn) {
+                    openBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const fn = decodeURIComponent(openBtn.dataset.filename);
+                        if (dropdownMenu) dropdownMenu.classList.remove('open');
+                        openFile(fn);
+                    });
+                }
+
+                // Wire up Delete button
+                const delBtn = tr.querySelector('.dropdown-delete');
+                if (delBtn) {
+                    delBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const fn = decodeURIComponent(delBtn.dataset.filename);
+                        if (dropdownMenu) dropdownMenu.classList.remove('open');
+                        deleteFile(fn, tr);
                     });
                 }
             });
@@ -1122,6 +1159,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     };
+
+    // Filter files by search input
+    const filesSearchInput = document.getElementById('filesSearchInput');
+    if (filesSearchInput) {
+        filesSearchInput.addEventListener('input', () => {
+            const query = filesSearchInput.value.toLowerCase().trim();
+            const rows = filesBody ? filesBody.querySelectorAll('tr') : [];
+            rows.forEach(row => {
+                const firstTd = row.querySelector('td:first-child');
+                if (firstTd) {
+                    const filename = firstTd.textContent.toLowerCase();
+                    row.style.display = filename.includes(query) ? '' : 'none';
+                }
+            });
+        });
+    }
+
+    // Close dropdowns when clicking elsewhere on the page
+    document.addEventListener("click", () => {
+        document.querySelectorAll(".dropdown-menu.open").forEach(m => {
+            m.classList.remove("open");
+        });
+    });
 
         const deleteFile = async (filename, rowEl) => {
             if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
@@ -1137,6 +1197,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (filesBody && filesBody.children.length === 0) {
                     loadFiles();
                 }
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        };
+
+        const openFile = async (filename) => {
+            try {
+                const response = await fetch(`/api/open-file/${encodeURIComponent(filename)}`, {
+                    method: 'POST'
+                });
+                if (!response.ok) {
+                    let errMsg = 'Failed to open file';
+                    try { const d = await response.json(); errMsg = d.error || errMsg; } catch (e) {}
+                    throw new Error(errMsg);
+                }
+                showToast(`Opening "${filename}"...`, 'info');
             } catch (error) {
                 showToast(error.message, 'error');
             }
