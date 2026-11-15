@@ -1,7 +1,9 @@
 import { spawn } from 'child_process';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { getBinDir, resolveBinary } from './binary-manager.js';
-import { DOWNLOADS_DIR, BIN_DIR, ensureDir } from './paths.js';
+import { DOWNLOADS_DIR, BIN_DIR, DATA_DIR, ensureDir } from './paths.js';
 import {
     isValidVideoUrl,
     sanitizeOutputTemplate,
@@ -11,9 +13,12 @@ import {
     createProgressTracker,
 } from './ytdlp-args.js';
 import { savedOptionsToArgs } from './saved-options.js';
+import { getOutputDefaults, defaultContainer } from './output-defaults.js';
 
-const DEFAULT_CONCURRENCY = 3;
-const MAX_CONCURRENCY = 5;
+// Download jobs run in independent yt-dlp subprocesses; fill every slot by
+// default so batches are not serialized. Users can pick 1–10 in Settings.
+const DEFAULT_CONCURRENCY = 5;
+const MAX_CONCURRENCY = 10;
 const MAX_ERROR_LENGTH = 2000;
 const MAX_TRACKED_JOBS = 500;
 const KILL_ESCALATION_MS = 5000;
@@ -24,8 +29,92 @@ let maxConcurrency = DEFAULT_CONCURRENCY;
 let progressCallbacks = [];
 let jobCancelFlags = new Set();
 
+const QUEUE_FILE = process.env.YTDLP_QUEUE_FILE || path.join(DATA_DIR, 'queue.json');
+let saveTimer = null;
+let lastSavedAt = 0;
+
 function generateId() {
     return crypto.randomUUID();
+}
+
+function serializeJobs() {
+    return Array.from(jobs.values()).map((job) => {
+        const { _process, _killTimer, expectedFiles, fileIndex, ...rest } = job;
+        return rest;
+    });
+}
+
+function saveJobs() {
+    try {
+        ensureDir(DATA_DIR);
+        const tmp = `${QUEUE_FILE}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(serializeJobs()));
+        fs.renameSync(tmp, QUEUE_FILE);
+        lastSavedAt = Date.now();
+    } catch (err) {
+        console.error('Failed to persist download queue:', err);
+    }
+}
+
+// Progress lines arrive constantly; throttle checkpointing to once a second
+// while structural changes call saveJobsNow() for immediate durability.
+function scheduleSave() {
+    if (saveTimer) return;
+    const wait = Math.max(0, 1000 - (Date.now() - lastSavedAt));
+    saveTimer = setTimeout(() => {
+        saveTimer = null;
+        saveJobs();
+    }, wait);
+    if (typeof saveTimer.unref === 'function') saveTimer.unref();
+}
+
+function saveJobsNow() {
+    if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+    }
+    saveJobs();
+}
+
+const VALID_STATUS = new Set(['queued', 'paused', 'completed', 'failed']);
+
+// Restore the queue from disk. A job that was mid-download when the process
+// died is re-queued (yt-dlp's --continue picks up its .part files); jobs the
+// user explicitly paused stay paused.
+function loadPersistedJobs() {
+    let raw;
+    try {
+        raw = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
+    } catch {
+        return;
+    }
+    if (!Array.isArray(raw)) return;
+
+    for (const item of raw.slice(-MAX_TRACKED_JOBS)) {
+        if (!item || typeof item !== 'object') continue;
+        if (typeof item.id !== 'string' || !isValidVideoUrl(item.url)) continue;
+        const status = item.status === 'downloading' ? 'queued' : item.status;
+        if (!VALID_STATUS.has(status)) continue;
+        const options = item.options && typeof item.options === 'object' && !Array.isArray(item.options)
+            ? { ...item.options }
+            : {};
+        if (options.outputTemplate && !sanitizeOutputTemplate(options.outputTemplate)) {
+            delete options.outputTemplate;
+        }
+        jobs.set(item.id, {
+            id: item.id,
+            url: item.url,
+            title: typeof item.title === 'string' ? item.title.slice(0, 300) : item.url,
+            status,
+            progress: Number.isFinite(item.progress) ? Math.min(100, Math.max(0, item.progress)) : 0,
+            createdAt: Number.isFinite(item.createdAt) ? item.createdAt : Date.now(),
+            filename: typeof item.filename === 'string' ? item.filename : undefined,
+            error: typeof item.error === 'string' ? item.error.slice(0, MAX_ERROR_LENGTH) : undefined,
+            options,
+            _process: null,
+        });
+    }
+    pruneJobs();
 }
 
 function emitProgress(job) {
@@ -34,6 +123,7 @@ function emitProgress(job) {
     for (const cb of progressCallbacks) {
         try { cb(snapshot); } catch {}
     }
+    scheduleSave();
 }
 
 // Only emit events for jobs that still exist in the queue, so removed/cancelled
@@ -94,7 +184,14 @@ export function addJob(url, options = {}) {
     }
     ensureDir(BIN_DIR);
     const id = generateId();
-    const { title: titleOption, ...restOptions } = options;
+    const { title: titleOption, format: formatOption, audioFormat: audioFormatOption, ...restOptions } = options;
+    const defaults = getOutputDefaults();
+    const has = (key) => Object.prototype.hasOwnProperty.call(options, key);
+    // An explicitly sent 'auto' means "no container constraint" and must not
+    // be replaced by the saved default.
+    const format = has('format')
+        ? (formatOption === 'auto' ? undefined : formatOption)
+        : defaultContainer();
     const job = {
         id,
         url,
@@ -103,10 +200,10 @@ export function addJob(url, options = {}) {
         progress: 0,
         createdAt: Date.now(),
         options: {
-            format: 'mp4',
+            format,
             quality: 'best',
             audioOnly: false,
-            audioFormat: 'mp3',
+            audioFormat: has('audioFormat') ? audioFormatOption : defaults.audioFormat,
             ...restOptions,
         },
         _process: null,
@@ -114,6 +211,7 @@ export function addJob(url, options = {}) {
     jobs.set(id, job);
     pruneJobs();
     emitProgress(job);
+    saveJobsNow();
     processQueue();
     return id;
 }
@@ -153,12 +251,14 @@ export function cancelJob(id) {
     if (job.status === 'queued') {
         jobs.delete(id);
         emitProgress({ ...job, status: 'removed' });
+        saveJobsNow();
         return true;
     }
     if (job.status === 'downloading') {
         jobCancelFlags.add(id);
         job.status = 'paused';
         emitProgress(job);
+        saveJobsNow();
         terminateProcess(job);
         return true;
     }
@@ -174,6 +274,7 @@ export function deleteJob(id) {
     }
     jobs.delete(id);
     emitProgress({ ...job, status: 'removed' });
+    saveJobsNow();
     return true;
 }
 
@@ -193,6 +294,7 @@ export function resumeJob(id) {
     job.status = 'queued';
     job.progress = 0;
     emitProgress(job);
+    saveJobsNow();
     processQueue();
     return true;
 }
@@ -202,6 +304,19 @@ export function cancelAll() {
     for (const id of ids) {
         cancelJob(id);
     }
+}
+
+// Server shutdown: stop children without destroying the queue. In-flight jobs
+// become queued again (yt-dlp --continue resumes them on the next boot) while
+// explicit pauses are preserved.
+export function shutdownQueue() {
+    for (const job of jobs.values()) {
+        if (job.status !== 'downloading') continue;
+        jobCancelFlags.add(job.id);
+        job.status = 'queued';
+        terminateProcess(job);
+    }
+    saveJobsNow();
 }
 
 export function onProgress(callback) {
@@ -311,6 +426,7 @@ async function executeJob(job) {
                     job.error = (errData.trim() || `Exit code ${code}`).slice(0, MAX_ERROR_LENGTH);
                     emitIfTracked(job);
                 }
+                saveJobsNow();
                 resolve();
             });
 
@@ -321,6 +437,7 @@ async function executeJob(job) {
                 job.status = 'failed';
                 job.error = String(err.message).slice(0, MAX_ERROR_LENGTH);
                 emitIfTracked(job);
+                saveJobsNow();
                 resolve();
             });
         });
@@ -333,6 +450,12 @@ async function executeJob(job) {
             job.status = 'failed';
             job.error = String(err?.message || err).slice(0, MAX_ERROR_LENGTH);
             emitIfTracked(job);
+            saveJobsNow();
         }
     }
 }
+
+// Restore persisted jobs (if any) and immediately fill the free slots so a
+// restart continues queued/interrupted downloads.
+loadPersistedJobs();
+processQueue();

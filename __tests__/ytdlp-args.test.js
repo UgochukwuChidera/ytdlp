@@ -1,4 +1,4 @@
-import { createProgressTracker, extractFilename, filterExtraArgs, sanitizeOutputTemplate, isValidVideoUrl } from '../src/ytdlp-args.js';
+import { buildQualityArgs, createProgressTracker, extractFilename, filterExtraArgs, sanitizeOutputTemplate, isValidVideoUrl } from '../src/ytdlp-args.js';
 
 describe('createProgressTracker', () => {
   it('scales progress across a video + audio file merge without going backwards', () => {
@@ -125,5 +125,62 @@ describe('isValidVideoUrl', () => {
     expect(isValidVideoUrl('file:///etc/passwd')).toBe(false);
     expect(isValidVideoUrl('not a url')).toBe(false);
     expect(isValidVideoUrl('')).toBe(false);
+  });
+});
+
+describe('buildQualityArgs', () => {
+  const ctx = { binDir: '/bin', downloadsDir: '/downloads' };
+  const selectorOf = (args) => args[args.indexOf('-f') + 1];
+
+  it('keeps separate bestvideo + bestaudio streams for mp4 without a bad audio ext', () => {
+    const args = buildQualityArgs({ format: 'mp4', quality: 'best' }, ctx);
+    const selector = selectorOf(args);
+    expect(selector).toBe(
+      'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
+    );
+    expect(selector).not.toContain('bestaudio[ext=mp4]');
+    expect(args).toContain('--merge-output-format');
+    expect(args[args.indexOf('--merge-output-format') + 1]).toBe('mp4');
+  });
+
+  it('uses webm streams for a webm container', () => {
+    const args = buildQualityArgs({ format: 'webm', quality: 'best' }, ctx);
+    expect(selectorOf(args)).toBe(
+      'bestvideo[ext=webm]+bestaudio[ext=webm]/bestvideo+bestaudio/best',
+    );
+    expect(args).toContain('webm');
+  });
+
+  it('does not constrain codecs for mkv (merge target only)', () => {
+    const args = buildQualityArgs({ format: 'mkv', quality: 'best' }, ctx);
+    expect(selectorOf(args)).toBe('bestvideo+bestaudio/best');
+    expect(args[args.indexOf('--merge-output-format') + 1]).toBe('mkv');
+  });
+
+  it('downloads the best separate pair when no container is chosen', () => {
+    const args = buildQualityArgs({ quality: 'best' }, ctx);
+    expect(selectorOf(args)).toBe('bestvideo+bestaudio/best');
+    expect(args).not.toContain('--merge-output-format');
+  });
+
+  it('applies the height cap and keeps a combined fallback', () => {
+    const args = buildQualityArgs({ format: 'mp4', quality: '720p' }, ctx);
+    expect(selectorOf(args)).toBe(
+      'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]',
+    );
+  });
+
+  it('supports 4K and 360p resolution caps', () => {
+    expect(selectorOf(buildQualityArgs({ quality: '2160p' }, ctx)))
+      .toBe('bestvideo[height<=2160]+bestaudio/best[height<=2160]');
+    expect(selectorOf(buildQualityArgs({ quality: '360p' }, ctx)))
+      .toBe('bestvideo[height<=360]+bestaudio/best[height<=360]');
+  });
+
+  it('leaves audio-only extraction untouched', () => {
+    const args = buildQualityArgs({ audioOnly: true, audioFormat: 'm4a' }, ctx);
+    expect(args).not.toContain('-f');
+    expect(args).toContain('--extract-audio');
+    expect(args[args.indexOf('--audio-format') + 1]).toBe('m4a');
   });
 });

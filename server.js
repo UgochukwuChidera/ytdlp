@@ -21,6 +21,7 @@ import {
     getJob,
     cancelJob,
     cancelAll,
+    shutdownQueue,
     deleteJob,
     clearJobs,
     resumeJob,
@@ -52,6 +53,10 @@ import {
     savedOptionsToArgs,
 } from './src/saved-options.js';
 import { dumpJson } from './src/ytdlp-runner.js';
+import {
+    getOutputDefaults,
+    setOutputDefaults,
+} from './src/output-defaults.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -424,12 +429,23 @@ app.post('/api/download', (req, res) => {
         }
 
         const binDir = getBinDir();
+        const defaults = getOutputDefaults();
+        const resolvedFormat = format === undefined
+            ? (defaults.videoFormat === 'auto' ? undefined : defaults.videoFormat)
+            : (format === 'auto' ? undefined : format);
+        const resolvedAudioFormat = audioFormat || defaults.audioFormat;
         const extraArgsFiltered = [
             ...filterExtraArgs(extraArgs),
             ...savedOptionsToArgs(),
         ];
         const args = buildQualityArgs(
-            { format, quality, audioOnly, audioFormat, outputTemplate },
+            {
+                format: resolvedFormat,
+                quality,
+                audioOnly,
+                audioFormat: resolvedAudioFormat,
+                outputTemplate,
+            },
             { binDir, downloadsDir, extraArgs: extraArgsFiltered },
         );
         args.push('--print', 'after_move:filename');
@@ -825,14 +841,32 @@ app.post('/api/download/concurrency', (req, res) => {
     try {
         const { concurrency } = req.body;
         const val = parseInt(concurrency);
-        if (isNaN(val) || val < 1 || val > 5) {
-            return res.status(400).json({ error: 'Concurrency must be between 1 and 5' });
+        if (isNaN(val) || val < 1 || val > 10) {
+            return res.status(400).json({ error: 'Concurrency must be between 1 and 10' });
         }
         setConcurrency(val);
         res.json({ success: true, concurrency: getConcurrency() });
     } catch (error) {
         console.error('Concurrency set error:', error);
         res.status(500).json({ error: 'Failed to set concurrency' });
+    }
+});
+
+app.get('/api/output-defaults', (req, res) => {
+    try {
+        res.json(getOutputDefaults());
+    } catch (error) {
+        console.error('Output defaults get error:', error);
+        res.status(500).json({ error: 'Failed to get output defaults' });
+    }
+});
+
+app.post('/api/output-defaults', (req, res) => {
+    try {
+        res.json(setOutputDefaults(req.body));
+    } catch (error) {
+        console.error('Output defaults set error:', error);
+        res.status(400).json({ error: error.message || 'Failed to set output defaults' });
     }
 });
 
@@ -988,8 +1022,8 @@ let shuttingDown = false;
 function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`Received ${signal}, cancelling downloads and exiting...`);
-    try { cancelAll(); } catch {}
+    console.log(`Received ${signal}, pausing downloads and exiting...`);
+    try { shutdownQueue(); } catch {}
     process.exit(0);
 }
 process.on('SIGINT', () => shutdown('SIGINT'));

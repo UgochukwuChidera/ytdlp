@@ -8,7 +8,7 @@ Everything runs on your machine. No accounts, no cloud, no server bill.
 
 - **Metadata lookup** — fetch video details (title, thumbnail, duration, uploader) from any supported URL
 - **Playlist & channel scraping** — list every video in a playlist or channel and batch-queue them
-- **Download queue** — parallel jobs (1–5), live SSE progress, pause/resume/cancel
+- **Download queue** — parallel jobs (1–10), live SSE progress, pause/resume/cancel, survives restarts
 - **Library** — browse completed files, search, open in the file manager, save to device, delete
 - **Subscriptions** — save channels, scrape their latest videos, batch download
 - **Options** — fine-tune yt-dlp flags applied to every download

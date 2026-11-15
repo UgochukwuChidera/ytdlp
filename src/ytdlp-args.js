@@ -1,10 +1,21 @@
 import path from 'path';
 
 const QUALITY_MAP = {
-    best: 'bestvideo+bestaudio/best',
-    '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-    '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-    '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+    best: { pair: 'bestvideo+bestaudio', single: 'best' },
+    '2160p': { pair: 'bestvideo[height<=2160]+bestaudio', single: 'best[height<=2160]' },
+    '1440p': { pair: 'bestvideo[height<=1440]+bestaudio', single: 'best[height<=1440]' },
+    '1080p': { pair: 'bestvideo[height<=1080]+bestaudio', single: 'best[height<=1080]' },
+    '720p': { pair: 'bestvideo[height<=720]+bestaudio', single: 'best[height<=720]' },
+    '480p': { pair: 'bestvideo[height<=480]+bestaudio', single: 'best[height<=480]' },
+    '360p': { pair: 'bestvideo[height<=360]+bestaudio', single: 'best[height<=360]' },
+};
+
+// Stream extensions that can be merged into each output container. mkv is a
+// merge target only, so its streams keep their native codecs (h264/av1 +
+// aac/opus) instead of being constrained.
+const CONTAINER_STREAMS = {
+    mp4: { video: 'mp4', audio: 'm4a' },
+    webm: { video: 'webm', audio: 'webm' },
 };
 
 export const DANGEROUS_FLAGS = [
@@ -94,21 +105,34 @@ export function filterExtraArgs(extraArgs) {
 export function buildQualityArgs({ format, quality, audioOnly, audioFormat, outputTemplate }, { binDir, downloadsDir, extraArgs = [] }) {
     const args = ['--no-warnings', '--ffmpeg-location', binDir, '-P', downloadsDir];
     const tpl = sanitizeOutputTemplate(outputTemplate) || DEFAULT_OUTPUT_TEMPLATE;
-    const ext = ALLOWED_FORMATS.includes(format) ? format : 'mp4';
+    const container = ALLOWED_FORMATS.includes(format) ? format : null;
 
     if (audioOnly) {
         args.push('--extract-audio');
         args.push('--audio-format', ALLOWED_AUDIO_FORMATS.includes(audioFormat) ? audioFormat : 'mp3');
-    } else {
-        if (format || quality) {
-            const baseSelector = QUALITY_MAP[quality] || QUALITY_MAP.best;
-            const selector = baseSelector
-                .replaceAll('bestvideo', `bestvideo[ext=${ext}]`)
-                .replaceAll('bestaudio', `bestaudio[ext=${ext}]`);
-            args.push('-f', selector);
-        } else {
-            args.push('-f', 'best');
+    } else if (quality || container) {
+        // Always prefer the separate video + audio streams: a constrained
+        // pair first (when a container is requested), then the unconstrained
+        // best pair, and only then the single progressive file as a last
+        // resort. Without this, e.g. mp4 would request bestaudio[ext=mp4]
+        // (which does not exist) and silently fall back to a combined stream.
+        const { pair, single } = QUALITY_MAP[quality] || QUALITY_MAP.best;
+        const streams = container && CONTAINER_STREAMS[container];
+        const selectors = [];
+        if (streams) {
+            selectors.push(
+                pair
+                    .replaceAll('bestvideo', `bestvideo[ext=${streams.video}]`)
+                    .replaceAll('bestaudio', `bestaudio[ext=${streams.audio}]`),
+            );
         }
+        selectors.push(pair, single);
+        args.push('-f', selectors.join('/'));
+        if (container) {
+            args.push('--merge-output-format', container);
+        }
+    } else {
+        args.push('-f', 'best');
     }
     args.push('-o', tpl);
     args.push(...extraArgs);

@@ -32,6 +32,12 @@
         <label>Quality</label>
         <select v-model="formatType">
           <option value="best">best</option>
+          <option value="2160p">2160p (4K)</option>
+          <option value="1440p">1440p</option>
+          <option value="1080p">1080p</option>
+          <option value="720p">720p</option>
+          <option value="480p">480p</option>
+          <option value="360p">360p</option>
           <option value="bestvideo+bestaudio">bestvideo+bestaudio</option>
           <option value="bestaudio">bestaudio (audio only)</option>
           <option value="custom">custom</option>
@@ -162,7 +168,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useToast } from '../composables/useToast'
 
 const { showToast } = useToast()
@@ -172,7 +178,7 @@ const results = ref([])
 const fetching = ref(false)
 const formatType = ref('best')
 const container = ref('')
-const audioFormat = ref('mp3')
+const audioFormat = ref('m4a')
 const outputTemplate = ref('')
 const customFormat = ref('')
 // Advanced output controls (container, audio format, custom selector,
@@ -186,6 +192,20 @@ const formatList = ref([])
 
 const singleResult = computed(() => {
   return results.value.length === 1 ? results.value[0] : null
+})
+
+// Seed the per-download controls from the saved defaults; the user can still
+// override them for an individual job.
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/output-defaults')
+    if (!res.ok) return
+    const defaults = await res.json()
+    if (defaults.videoFormat) {
+      container.value = defaults.videoFormat === 'auto' ? '' : defaults.videoFormat
+    }
+    if (defaults.audioFormat) audioFormat.value = defaults.audioFormat
+  } catch {}
 })
 
 async function fetchMetadata() {
@@ -268,7 +288,7 @@ function selectFormat(fmt) {
 async function queueVideo(video) {
   const body = {
     url: video.url || video.webpage_url,
-    format: container.value || undefined,
+    format: container.value || 'auto',
     outputTemplate: outputTemplate.value || undefined,
   }
   if (formatType.value === 'bestaudio') {
@@ -281,10 +301,8 @@ async function queueVideo(video) {
       return
     }
     body.extraArgs = ['-f', customFormat.value.trim()]
-  } else if (formatType.value === 'bestvideo+bestaudio') {
-    body.quality = 'best'
   } else {
-    body.quality = 'best'
+    body.quality = formatType.value
   }
   try {
     const res = await fetch('/api/download/queue', {

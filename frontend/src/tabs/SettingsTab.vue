@@ -61,7 +61,34 @@
           <span class="concurrency-hint">How many yt-dlp jobs can run at the same time.</span>
         </div>
         <select id="concurrency-select" :value="concurrency" @change="setConcurrency($event)">
-          <option v-for="n in 5" :key="n" :value="n">{{ n }}</option>
+          <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
+        </select>
+      </div>
+
+      <!-- Output defaults -->
+      <div class="concurrency-row">
+        <div>
+          <label class="concurrency-label" for="video-default">Default video container</label>
+          <span class="concurrency-hint">Used unless a download picks its own. Auto lets yt-dlp choose.</span>
+        </div>
+        <select id="video-default" :value="outputDefaults.videoFormat" @change="setOutputDefault('videoFormat', $event)">
+          <option value="auto">Auto</option>
+          <option value="mp4">mp4</option>
+          <option value="webm">webm</option>
+          <option value="mkv">mkv</option>
+        </select>
+      </div>
+      <div class="concurrency-row">
+        <div>
+          <label class="concurrency-label" for="audio-default">Default audio format</label>
+          <span class="concurrency-hint">Used for audio-only downloads. m4a avoids re-encoding.</span>
+        </div>
+        <select id="audio-default" :value="outputDefaults.audioFormat" @change="setOutputDefault('audioFormat', $event)">
+          <option value="m4a">m4a</option>
+          <option value="mp3">mp3</option>
+          <option value="opus">opus</option>
+          <option value="flac">flac</option>
+          <option value="wav">wav</option>
         </select>
       </div>
 
@@ -197,7 +224,8 @@ const ytdlpStatus = ref('')
 const ffmpegStatus = ref('')
 const ytdlpPercent = ref(0)
 const ffmpegPercent = ref(0)
-const concurrency = ref(3)
+const concurrency = ref(5)
+const outputDefaults = ref({ videoFormat: 'mp4', audioFormat: 'm4a' })
 
 let setupEventSource = null
 
@@ -252,7 +280,7 @@ async function fetchConcurrency() {
     if (res.ok) {
       const data = await res.json()
       if (Number.isFinite(Number(data.concurrency))) {
-        concurrency.value = Math.min(5, Math.max(1, Number(data.concurrency)))
+        concurrency.value = Math.min(10, Math.max(1, Number(data.concurrency)))
       }
     }
   } catch (e) {
@@ -278,8 +306,40 @@ async function setConcurrency(event) {
   }
 }
 
-async function downloadBinary(name) {
-  const entry = binaries.value.find(b => b.name === name)
+async function fetchOutputDefaults() {
+  try {
+    const res = await fetch('/api/output-defaults')
+    if (res.ok) {
+      const data = await res.json()
+      outputDefaults.value = {
+        videoFormat: data.videoFormat || 'mp4',
+        audioFormat: data.audioFormat || 'm4a',
+      }
+    }
+  } catch (e) {
+    console.error('Output defaults fetch error:', e)
+  }
+}
+
+async function setOutputDefault(key, event) {
+  const value = event.target.value
+  const prev = { ...outputDefaults.value }
+  outputDefaults.value = { ...prev, [key]: value }
+  try {
+    const res = await fetch('/api/output-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: value }),
+    })
+    if (!res.ok) throw new Error('Failed to save output defaults')
+    outputDefaults.value = await res.json()
+  } catch (e) {
+    console.error('Output defaults set error:', e)
+    outputDefaults.value = prev
+  }
+}
+
+async function downloadBinary(name) {  const entry = binaries.value.find(b => b.name === name)
   if (!entry) return
   entry.downloading = true
   entry.percent = 0
@@ -528,6 +588,7 @@ async function resetOptions() {
 onMounted(() => {
   fetchStatus()
   fetchConcurrency()
+  fetchOutputDefaults()
   loadOptions()
 })
 

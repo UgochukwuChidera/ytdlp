@@ -40,12 +40,13 @@ jest.unstable_mockModule('../src/download-queue.js', () => {
   const mockGetJob = jest.fn((id) => id === 'job-1' ? { id: 'job-1', url: 'https://example.com/video', status: 'completed', progress: 100 } : null);
   const mockCancelJob = jest.fn((id) => id === 'job-1');
   const mockCancelAll = jest.fn();
+  const mockShutdownQueue = jest.fn();
   const mockDeleteJob = jest.fn((id) => id === 'job-1');
   const mockClearJobs = jest.fn(() => 0);
   const mockProcessQueue = jest.fn();
   const mockResumeJob = jest.fn((id) => id === 'job-1');
   const mockOnProgress = jest.fn(() => () => {});
-  const mockGetConcurrency = jest.fn(() => 3);
+  const mockGetConcurrency = jest.fn(() => 5);
   const mockSetConcurrency = jest.fn();
 
   return {
@@ -56,11 +57,34 @@ jest.unstable_mockModule('../src/download-queue.js', () => {
     getJob: mockGetJob,
     cancelJob: mockCancelJob,
     cancelAll: mockCancelAll,
+    shutdownQueue: mockShutdownQueue,
     deleteJob: mockDeleteJob,
     clearJobs: mockClearJobs,
     processQueue: mockProcessQueue,
     resumeJob: mockResumeJob,
     onProgress: mockOnProgress,
+  };
+});
+
+jest.unstable_mockModule('../src/output-defaults.js', () => {
+  let defaults = { videoFormat: 'mp4', audioFormat: 'm4a' };
+  // Plain functions: jest.resetAllMocks() runs before every test and would
+  // otherwise strip jest.fn implementations back to undefined.
+  const getOutputDefaults = () => ({ ...defaults });
+  const setOutputDefaults = (patch) => {
+    if (patch.videoFormat && !['auto', 'mp4', 'webm', 'mkv'].includes(patch.videoFormat)) {
+      throw new Error('Invalid videoFormat');
+    }
+    if (patch.audioFormat && !['mp3', 'm4a', 'opus', 'flac', 'wav'].includes(patch.audioFormat)) {
+      throw new Error('Invalid audioFormat');
+    }
+    defaults = { ...defaults, ...patch };
+    return { ...defaults };
+  };
+  return {
+    getOutputDefaults,
+    setOutputDefaults,
+    defaultContainer: () => (defaults.videoFormat === 'auto' ? undefined : defaults.videoFormat),
   };
 });
 
@@ -120,7 +144,7 @@ beforeEach(() => {
     { id: 'job-1', url: 'https://example.com/video', status: 'completed', progress: 100, filename: 'video.mp4', title: 'Test Video', createdAt: Date.now(), options: {} }
   ]);
   downloadQueue.addJob.mockReturnValue('mock-job-id-123');
-  downloadQueue.getConcurrency.mockReturnValue(3);
+  downloadQueue.getConcurrency.mockReturnValue(5);
 
   channelManager.unsubscribe.mockImplementation((id) => id === 'channel-1');
   channelManager.updateChannel.mockImplementation((id) => id === 'channel-1' ? { id: 'channel-1', name: 'Updated' } : null);
@@ -159,7 +183,7 @@ describe('API Endpoints', () => {
       const res = await request(app).get('/api/status').expect(200);
       expect(res.body.queue).toHaveProperty('concurrency');
       expect(typeof res.body.queue.concurrency).toBe('number');
-      expect(res.body.queue.concurrency).toBe(3);
+      expect(res.body.queue.concurrency).toBe(5);
     });
 
     it('returns 200 with ytdlpOptions object', async () => {
@@ -168,6 +192,29 @@ describe('API Endpoints', () => {
       expect(res.body.options).toHaveProperty('general');
       expect(res.body.options).toHaveProperty('videoSelection');
       expect(res.body.options).toHaveProperty('downloadOptions');
+    });
+  });
+
+  describe('GET/POST /api/output-defaults', () => {
+    it('returns the saved output defaults', async () => {
+      const res = await request(app).get('/api/output-defaults').expect(200);
+      expect(res.body).toEqual({ videoFormat: 'mp4', audioFormat: 'm4a' });
+    });
+
+    it('saves a valid default', async () => {
+      const res = await request(app)
+        .post('/api/output-defaults')
+        .send({ videoFormat: 'webm' })
+        .expect(200);
+      expect(res.body).toEqual({ videoFormat: 'webm', audioFormat: 'm4a' });
+    });
+
+    it('rejects an unknown container', async () => {
+      const res = await request(app)
+        .post('/api/output-defaults')
+        .send({ videoFormat: 'avi' })
+        .expect(400);
+      expect(res.body).toHaveProperty('error');
     });
   });
 
