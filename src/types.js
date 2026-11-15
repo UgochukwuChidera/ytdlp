@@ -3,7 +3,7 @@
  * @property {string} id - Unique job ID
  * @property {string} url - Video/playlist URL
  * @property {string} title - Video title
- * @property {'queued'|'downloading'|'completed'|'failed'} status
+ * @property {'queued'|'downloading'|'paused'|'completed'|'failed'|'removed'} status
  * @property {number} progress - 0-100
  * @property {string} [filename] - Output filename when done
  * @property {string} [error] - Error message if failed
@@ -16,7 +16,6 @@
  * @property {boolean} [audioOnly] - Extract audio only
  * @property {string} [audioFormat] - Audio format (mp3, m4a, etc)
  * @property {string} [outputTemplate] - Custom output template
- * @property {number} [concurrent] - Concurrency for this job (1-5)
  * @property {Object} [extraArgs] - Additional yt-dlp flags
  *
  * @typedef {Object} ChannelSubscription
@@ -38,8 +37,6 @@
  * @property {string} path - Full filesystem path
  * @property {string} [version] - Version string
  * @property {boolean} exists - Whether binary exists
- * @property {string} [latestVersion] - Latest available version
- * @property {boolean} [hasUpdate] - Whether update is available
  */
 
 export {};

@@ -48,23 +48,6 @@ html.dark .sidebar { background: rgba(15, 20, 28, 0.94); }
   transition: opacity 160ms ease;
 }
 .sidebar-overlay.open { opacity: 1; pointer-events: auto; }
-.sidebar.collapsed { transform: translateX(-100%); }
-.sidebar.collapsed + .sidebar-overlay { opacity: 0; pointer-events: none; }
-.sidebar-toggle {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  flex: 0 0 auto;
-  transition: transform 150ms ease, color 150ms ease;
-}
-.sidebar-toggle:hover { color: var(--text); background: var(--surface-2); }
-.sidebar-toggle.collapsed { transform: rotate(180deg); }
 
 .brand {
   display: flex;
@@ -607,16 +590,6 @@ tbody tr:hover td { background: color-mix(in srgb, var(--brand-soft), transparen
 }
 .slider-row { display: flex; align-items: center; gap: 12px; }
 input[type="range"] { accent-color: var(--brand); }
-#concurrencyValue {
-  min-width: 34px;
-  height: 30px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 6px;
-  color: var(--brand);
-  background: var(--brand-soft);
-  font-weight: 760;
-}
 .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 .queue-filter-btn {
   min-height: 34px !important;
@@ -926,6 +899,4 @@ footer {
 }
 @media (min-width: 861px) {
   .sidebar-overlay { display: none !important; }
-  .main-content.sidebar-collapsed { margin-left: 0; }
-  .sidebar { transition: transform 180ms ease; }
 }

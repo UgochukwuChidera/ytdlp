@@ -1,17 +1,25 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
+import HomeTab from '../tabs/HomeTab.vue'
+import LibraryTab from '../tabs/LibraryTab.vue'
+import SettingsTab from '../tabs/SettingsTab.vue'
+import ChannelsTab from '../tabs/ChannelsTab.vue'
 
 const routes = [
   { path: '/', redirect: '/download' },
-  { path: '/download', name: 'download', component: () => import('../tabs/HomeTab.vue') },
-  { path: '/queue', name: 'queue', component: () => import('../tabs/QueueTab.vue') },
-  { path: '/setup', name: 'setup', component: () => import('../tabs/SetupTab.vue') },
-  { path: '/downloads', name: 'downloads', component: () => import('../tabs/DownloadsTab.vue') },
-  { path: '/channels', name: 'channels', component: () => import('../tabs/ChannelsTab.vue') },
-  { path: '/options', name: 'options', component: () => import('../tabs/OptionsTab.vue') },
+  { path: '/download', name: 'download', component: HomeTab },
+  { path: '/library', name: 'library', component: LibraryTab },
+  { path: '/subscriptions', name: 'subscriptions', component: ChannelsTab },
+  { path: '/settings', name: 'settings', component: SettingsTab },
+  // Old routes kept as redirects so stale bookmarks still land somewhere useful
+  { path: '/queue', redirect: '/library' },
+  { path: '/downloads', redirect: '/library' },
+  { path: '/channels', redirect: '/subscriptions' },
+  { path: '/setup', redirect: '/settings' },
+  { path: '/options', redirect: '/settings' },
 ]
 
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHistory(),
   routes,
 })
 

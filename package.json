@@ -2,8 +2,21 @@
   "name": "ytdlp-app",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
+    "setup": "npm install && npm --prefix frontend install && npm --prefix frontend run build",
+    "service:install": "node scripts/install-service.js install",
+    "service:uninstall": "node scripts/install-service.js uninstall",
+    "service:status": "node scripts/install-service.js status",
+    "alias:install": "sudo node scripts/alias.js install",
+    "alias:remove": "sudo node scripts/alias.js remove",
+    "alias:check": "node scripts/alias.js check",
+    "tls:install": "node scripts/tls.js install",
+    "tls:trust": "sudo node scripts/tls.js trust",
+    "tls:nss": "node scripts/tls.js nss",
+    "tls:status": "node scripts/tls.js status",
+    "tls:remove": "node scripts/tls.js remove",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --forceExit --detectOpenHandles"
   },
   "keywords": [],
@@ -12,19 +25,10 @@
   "type": "module",
   "dependencies": {
     "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "yt-dlp-exec": "^1.0.2"
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
     "supertest": "^7.0.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "yt-dlp-exec"
-    ]
-  },
-  "allowScripts": {
-    "yt-dlp-exec@1.0.2": true
   }
 }

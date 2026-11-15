@@ -1,0 +1,18 @@
+{
+  "agent": "reviewer",
+  "status": "done",
+  "timestamp": "2026-11-15T00:00:00Z",
+  "task": "second-pass security/best-practice review of ytdlp-app",
+  "findings": [
+    {"severity": "critical", "file": "src/ytdlp-args.js", "line": 49, "issue": "filterExtraArgs bypass: yt-dlp accepts attached-value short flags (-oVALUE, -Pdir); '-o/tmp/evil' is not matched by the exact/'='-style isDangerousFlag check, so client extraArgs can set arbitrary output paths (arbitrary file write with --force-overwrites). Verified empirically against yt-dlp 2026.08.19.", "recommendation": "Reject any token matching /^-[oP].+/ and switch extraArgs to a strict allowlist."},
+    {"severity": "major", "file": "src/ytdlp-args.js", "line": 10, "issue": "DANGEROUS_FLAGS blacklist misses --ffmpeg-location, --external-downloader/--downloader, --download-archive, --cookies, --cache-dir, --force-overwrites; --/parser-terminator and non-object req.body pass through.", "recommendation": "Allowlist approach + strip bare '--' + guard req.body with {}."},
+    {"severity": "major", "file": "server.js", "line": 334, "issue": "/api/metadata lacks --no-playlist/--flat-playlist and dumpJson accumulates unbounded stdout -> OOM DoS, remotely triggerable from any webpage (GET CSRF).", "recommendation": "Add --flat-playlist or cap stdout; add Host validation."},
+    {"severity": "major", "file": "server.js", "line": 62, "issue": "No Host/Origin header validation -> DNS rebinding gives a malicious website same-origin access to the full loopback API (read files, delete, spawn yt-dlp).", "recommendation": "Host header middleware rejecting non-127.0.0.1/non-localhost hosts."},
+    {"severity": "major", "file": "package-lock.json", "line": 0, "issue": "Prod deps: body-parser 2.3.0 high DoS (GHSA-27r3-jxmh-p828), proxy-addr critical IP-spoofing (GHSA-jqcg-44mw-7w3h), qs moderate DoS.", "recommendation": "npm audit fix / bump express stack."},
+    {"severity": "minor", "file": "src/binary-manager.js", "line": 205, "issue": "Redirect Location not scheme-validated; http:// redirect throws ERR_INVALID_PROTOCOL synchronously inside response handler -> uncaughtException; also no content-length-free download cap.", "recommendation": "Validate https: on redirects, try/catch doRequest."},
+    {"severity": "minor", "file": "server.js", "line": 815, "issue": "open-file has no extension allowlist; downloaded .desktop/.bat/.lnk could execute via xdg-open/explorer.", "recommendation": "Allowlist media extensions."},
+    {"severity": "minor", "file": "src/channel-manager.js", "line": 104, "issue": "Regex-based baseUrl strip could leave suffix; scrape triggers yt-dlp network fetches with saved options applied; --match-title regexes (python re) can hang a worker (ReDoS in yt-dlp).", "recommendation": "Cap saved regex lengths/complexity."},
+    {"severity": "minor", "file": ".github/workflows/main.yml", "line": 19, "issue": "CI installs with stale pnpm-lock.yaml and never runs tests; two lockfiles diverge.", "recommendation": "Single lockfile (npm), run jest in CI."},
+    {"severity": "minor", "file": "src/saved-options.js", "line": 19, "issue": "--cookies string option allows arbitrary local file read attempts as cookie jar.", "recommendation": "Restrict to downloads dir or drop option."}
+  ]
+}

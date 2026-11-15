@@ -1,0 +1,132 @@
+{
+  "agent": "historian",
+  "status": "done",
+  "timestamp": "2026-11-14",
+  "task": "Second-pass review of ytdlp-app after round-1 fixes",
+  "tests_run": ["npm test"],
+  "tests_passed": true,
+  "test_summary": "npm test: 2 suites passed, 66/66 tests passed (2.5s)",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "src/channel-manager.js",
+      "line": 44,
+      "issue": "subscribe() calls dumpJson(url, ['--extract-flat']) but --extract-flat is not a valid yt-dlp flag (verified against the managed binary: only --flat-playlist/--no-flat-playlist exist). yt-dlp rejects it with a usage error on every call, the catch swallows it, and channelInfo={} — so every subscribed channel is saved with name = raw URL, no avatar, subscriberCount 0, videoCount 0. The channel naming feature is silently dead.",
+      "recommendation": "Change to ['--flat-playlist']. Also consider logging the dumpJson failure instead of the silent catch."
+    },
+    {
+      "severity": "major",
+      "file": "frontend/src/tabs/QueueTab.vue",
+      "line": 196,
+      "issue": "SSE update handler merges any {type:'update', job} into the row list, including jobs whose status is 'removed' (emitted by deleteJob/clearJobs/cancel-all for queued jobs in src/download-queue.js:121,146). Rows the server deleted are re-merged as status 'removed' — unstyled badge, invisible to every filter, and they linger indefinitely because the queue SSE never re-inits while the connection stays open. Visible after Cancel All (queued jobs), Clear All, or a delete from a second client.",
+      "recommendation": "In the onmessage handler: if (data.job.status === 'removed') { jobs.value = jobs.value.filter(j => (j.id||j._id) !== jobId); return; } and don't push rows with status 'removed' in the else branch."
+    },
+    {
+      "severity": "major",
+      "file": "src/download-queue.js",
+      "line": 128,
+      "issue": "cancelJob/deleteJob rely solely on SIGTERM with no escalation. If yt-dlp ignores or is slow to die on SIGTERM (stuck network socket, spawned post-processing child), proc 'close' never fires, executeJob's promise never settles, and the concurrency slot (activeCount) is leaked permanently while the job shows 'paused' forever. There is no SIGKILL fallback and no timer.",
+      "recommendation": "After sending SIGTERM, arm a timeout (5–10s) that sends SIGKILL; clear it in the close handler. Optionally also treat SIGTERM as async-completion only."
+    },
+    {
+      "severity": "minor",
+      "file": "src/download-queue.js",
+      "line": 296,
+      "issue": "The setup-phase catch uses emitProgress(job) instead of emitIfTracked and unconditionally sets status='failed'. A job deleted (deleteJob) during setup emits a ghost 'failed' event for a removed job, and a job cancelled during setup has its 'paused' status clobbered to 'failed'. The ghost-event elimination fix is bypassed on this one path.",
+      "recommendation": "In the catch: only set status/emit if jobs.has(job.id) and job.status is not 'paused'/'removed'; use emitIfTracked."
+    },
+    {
+      "severity": "minor",
+      "file": "src/ytdlp-args.js",
+      "line": 62,
+      "issue": "filterExtraArgs object mode maps v===false to [k,'false'], emitting '--flag false' as two argv entries — invalid for boolean flags (e.g. {'--no-playlist': false} yields --no-playlist false). False should mean 'not set'.",
+      "recommendation": "Skip entries whose value is false (or undefined/null): filter out v === false before mapping."
+    },
+    {
+      "severity": "minor",
+      "file": "src/ytdlp-args.js",
+      "line": 241,
+      "issue": "executeJob sets expectedFiles = audioOnly ? 1 : 2 unconditionally, but buildQualityArgs can emit '-f best' (single progressive file, ytdlp-args.js:96) or a selector whose fallback 'best...' matches a single progressive file. Then only 1 destination is seen and overall progress is capped at 49% for the whole download, jumping to 100% at completion.",
+      "recommendation": "Set expectedFiles dynamically: bump on the second '[download] Destination:' line instead of pre-computing, or derive from the format selector (merge selectors expect 2)."
+    },
+    {
+      "severity": "minor",
+      "file": "src/ytdlp-args.js",
+      "line": 129,
+      "issue": "createProgressTracker matches raw text chunks without line buffering. If a data chunk splits a '[download] Destination:' or '...% (frag N/M)' line, the regexes miss it: fileIndex and the current file's percentage are wrong until the next full line, and the already-downloaded count can under-count.",
+      "recommendation": "Accumulate text in a buffer and only process complete '\\n'-terminated lines (keep the tail partial)."
+    },
+    {
+      "severity": "minor",
+      "file": "server.js",
+      "line": 87,
+      "issue": "/api/status calls checkBinaries(), which runs three execFileSync version probes (10s timeout each) synchronously on every request. This blocks the event loop on a hot polling endpoint and stalls SSE progress delivery for all connected clients while it runs; a misbehaving binary can freeze the whole server for up to ~30s per status call.",
+      "recommendation": "Cache the version probe result keyed by mtime, or run the probes with spawnAsync and only re-probe on demand (/api/updates, setup)."
+    },
+    {
+      "severity": "minor",
+      "file": "src/ytdlp-runner.js",
+      "line": 8,
+      "issue": "dumpJson has no process timeout and accumulates stdout unbounded. A yt-dlp that hangs (live stream, huge --flat-playlist channel scrape — channel-manager iterates 3 scrape calls per request) leaves the request hanging forever with no way to abort; memory can balloon on large playlists.",
+      "recommendation": "Add a configurable timeout that kills the process and rejects; optionally cap stdout size (reject with a clear error)."
+    },
+    {
+      "severity": "minor",
+      "file": "frontend/src/tabs/OptionsTab.vue",
+      "line": 133,
+      "issue": "Two issues in the options form: (1) categories computed filters only '_platform', so the 'saved' key returned by GET /api/options leaks in as a phantom 'saved' category with 0 options; (2) the saved map in the response is never hydrated into optionValues — after Apply, navigating away and back shows an empty form while the server still has the saved options active on every download. Users can't see (or unknowingly keep) applied flags.",
+      "recommendation": "Filter k !== '_platform' && k !== 'saved'; on load, copy data.saved into optionValues (booleans as true, others as-is)."
+    },
+    {
+      "severity": "minor",
+      "file": "frontend/src/composables/useDialog.js",
+      "line": 15,
+      "issue": "confirmDialog() overwrites dialog.value without resolving a pending dialog's promise — the first caller's await hangs forever. Additionally ConfirmDialog.vue has no unmount resolution: if the component unmounts with a dialog open (dev HMR or future per-route mounting), the awaiting promise never settles and dialog state stays set (remount shows an inert dialog with no keydown listener, since watch fires only on change).",
+      "recommendation": "In confirmDialog, resolve any existing dialog with false before overwriting; in ConfirmDialog onUnmounted, call resolveDialog(false)."
+    },
+    {
+      "severity": "minor",
+      "file": "server.js",
+      "line": 391,
+      "issue": "Legacy POST /api/download has no client-disconnect handling: if the browser aborts, yt-dlp runs to completion unmonitored (no req.on('close') kill), and there is no timeout — a hung yt-dlp holds the HTTP request open forever.",
+      "recommendation": "On req 'close', SIGTERM the subprocess; consider routing this endpoint through the queue or deprecating it."
+    },
+    {
+      "severity": "minor",
+      "file": "server.js",
+      "line": 504,
+      "issue": "POST /api/download/queue/batch gives every job the same title (title || url), so per-video titles from ChannelsTab scrape are lost — the whole batch shows the channel name in the Queue tab.",
+      "recommendation": "Accept an optional titles array (or per-item objects) and pass video.title per job."
+    },
+    {
+      "severity": "minor",
+      "file": "frontend/src/tabs/HomeTab.vue",
+      "line": 270,
+      "issue": "Custom format mode sends extraArgs ['-f', customFormat] with no validation; an empty custom format yields argv ending '-f' '' which makes yt-dlp fail with a cryptic error, and arbitrary format strings pass through unvalidated (cosmetically safe, but user-hostile).",
+      "recommendation": "Disable the queue action while customFormat is empty and sanity-check the selector client-side (non-empty, no newlines)."
+    }
+  ],
+  "regression_risks": [
+    "src/saved-options.js: savedOptionsToArgs() output is injected into argv WITHOUT passing through filterExtraArgs/DANGEROUS_FLAGS — it only checks its own BLOCKED_FLAGS list. Today the catalogue contains none of DANGEROUS_FLAGS and -o/-P/--paths/-s/--print/--dump-json/--dump-single-json are blocked, so this is safe, but the two blocklists (ytdlp-args.DANGEROUS_FLAGS vs saved-options.BLOCKED_FLAGS) can silently drift; a future catalogue entry like an exec/ppa variant would bypass the round-1 fix. Defence-in-depth: run saved args through isDangerousFlag too. Also note the catalogue does contain '--cookies' (arbitrary local file path) — acceptable for a loopback-only app.",
+    "server.js route order: GET /api/download/queue/events (line 456) must stay declared before GET /api/download/queue/:id (line 533) or the SSE endpoint gets captured as job id 'events'. Currently correct but order-dependent — worth a comment or explicit test.",
+    "server.js versionLte (lines 150-188): correct today, but the date-vs-semver mixing logic (dateOf regexes, `if (currentDate !== latestDate) return null`) is subtle; a change to binary version formats (e.g. yt-dlp nightly builds) can flip updateAvailable spuriously.",
+    "src/binary-manager.js downloadFile: integrity check depends on Content-Length; chunked responses skip the completeness check. The redirect-following recursion reuses tmpDest across attempts — correct as written, but fragile if touched.",
+    "QueueTab SSE vs fetchQueue double-load: onMounted fetch then SSE init overwrite — currently harmless, but any future diff-merge logic between the two paths could resurrect deleted rows (the 'removed' handling in finding #2).",
+    "src/download-queue.js processQueue relies on executeJob being synchronous until spawn; if any await is added before spawn, two processQueue iterations could pick the same job (status guard is set before the call — currently safe by single-threadedness only)."
+  ],
+  "verified_fixed_from_round_1": [
+    "URL http(s) validation + '--' separator present at all yt-dlp spawn sites (download-queue.js:230, ytdlp-runner.js:13, server.js:389)",
+    "spawn with argv arrays for open-file/open-folder (server.js:787-795)",
+    "CORS disabled by default (server.js:62), bind 127.0.0.1 (server.js:857)",
+    "Dangerous-flag filter incl. -o/-P/--paths/--config-location (src/ytdlp-args.js:10-24)",
+    "outputTemplate traversal validation both at route and addJob",
+    "safeFilePath backslash + containment checks (server.js:77-83)",
+    "saved-options isolation: catalogue never mutated, __proto__/constructor/prototype keys skipped, tested",
+    "Queue rewrite: real concurrency loop, auto-start, cancel route, emitIfTracked ghost suppression, monotonic fragment-aware tracker (unit-tested)",
+    "binary-manager: HTTP status check, redirect cap, timeout, atomic .part writes, execFileSync tar with argv array, single-flight once()",
+    "metadata endpoints route through managed binary via dumpJson",
+    "SIGTERM/SIGINT shutdown handlers (server.js:873-874)",
+    "Frontend: ConfirmDialog promise + focus trap + Escape + overlay click, DownloadsTab has no fake files, rolling stdout buffer in both download paths"
+  ],
+  "notes": "Test coverage gap: src/saved-options.js value validation (string types, 500-char cap, choice validation) has no direct unit tests; only endpoint-level tests exist. Cancel/resume lifecycle (paused -> resume -> re-download accounting) is untested."
+}

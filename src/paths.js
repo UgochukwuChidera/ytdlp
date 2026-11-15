@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
 
 function getAppDataDir() {
     const platform = os.platform();
@@ -22,7 +21,9 @@ function getAppDataDir() {
 
 export const DATA_DIR = getAppDataDir();
 export const BIN_DIR = path.join(DATA_DIR, 'bin');
-export const DOWNLOADS_DIR = process.env.YTDLP_DOWNLOADS_DIR || path.join(projectRoot, 'downloads');
+// Downloads live next to the OS Downloads folder like a regular app.
+export const DOWNLOADS_DIR =
+    process.env.YTDLP_DOWNLOADS_DIR || path.join(os.homedir(), 'Downloads', 'ytdlp-app');
 
 export function getBinDir() {
     return BIN_DIR;

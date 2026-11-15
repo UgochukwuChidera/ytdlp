@@ -1,32 +1,23 @@
 {
   "session": {
-    "id": "ytdlp-app-2026-06-23",
-    "start_time": "2026-06-23T00:00:00Z",
-    "phase": "complete",
-    "status": "complete"
+    "id": "sidebar-fix-2026-07-04",
+    "start_time": "2026-07-04T00:00:00Z",
+    "phase": "planning",
+    "status": "planned"
   },
-  "task": "Implement 5 changes to the ytdlp-app: add /api/open-file endpoint, add search bar to Downloads tab, replace Download link with dropdown menu, add CSS for dropdown, add search/filter functionality",
+  "task": "Fix sidebar collapse — icon-only mode + keyboard shortcut",
   "workItems": [
-    {"id": "wi-1", "description": "Add /api/open-file/:filename POST endpoint to server.js", "status": "pending"},
-    {"id": "wi-2", "description": "Add search input to Downloads tab in index.html", "status": "pending"},
-    {"id": "wi-3", "description": "Replace Download link with dropdown menu in app.js loadFiles()", "status": "pending"},
-    {"id": "wi-4", "description": "Add CSS styles for dropdown menu in index.html", "status": "pending"},
-    {"id": "wi-5", "description": "Add search/filter functionality to app.js loadFiles()", "status": "pending"},
-    {"id": "wi-6", "description": "Merge agent files and dispatch cleanup-agent", "status": "complete"}
+    {"id": "wi-1", "description": "Remove .sidebar.collapsed { transform: translateX(-100%) } from base.css line 51 and related rules that force full disappearance", "status": "pending"},
+    {"id": "wi-2", "description": "Fix @media (min-width: 861px) rules in base.css to not override the icon-only collapsed state", "status": "pending"},
+    {"id": "wi-3", "description": "Add :class=\"{ collapsed: sidebarCollapsed }\" to toggle button in App.vue for chevron rotation", "status": "pending"},
+    {"id": "wi-4", "description": "Add Ctrl+B/Cmd+B keyboard shortcut in App.vue with onMounted/onUnmounted lifecycle hooks", "status": "pending"},
+    {"id": "wi-5", "description": "Merge agent files, dispatch cleanup-agent, commit via commit-crafter", "status": "pending"}
   ],
   "decisions": [
-    "Use same sanitization pattern as existing /api/files/:filename endpoint",
-    "Dropdown positioned absolutely relative to ... button, shown on click",
-    "Search input added below section-title, above the table wrapper",
-    "Use existing design tokens (CSS variables) for dropdown styling"
-  ],
-  "cleanup": {
-    "files_removed": 17,
-    "space_freed_bytes": 6088,
-    "space_freed_human": "6 KB",
-    "packages_removed": [],
-    "directories_scanned": [".spec/agents/"],
-    "dry_run": false,
-    "timestamp": "2026-06-24T01:14:00Z"
-  }
+    "Remove global CSS rules that force translateX(-100%) on collapsed sidebar",
+    "Let scoped CSS width: 60px take effect for icon-only mode on desktop",
+    "Preserve mobile off-canvas behavior unchanged (max-width: 768px / 860px)",
+    "Add collapsible class to toggle button for chevron rotation",
+    "Ctrl+B on Windows/Linux, Cmd+B on macOS via e.metaKey check"
+  ]
 }

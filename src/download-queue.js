@@ -1,28 +1,28 @@
-import fs from 'fs';
-import path from 'path';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
 import { getBinDir, resolveBinary } from './binary-manager.js';
 import { DOWNLOADS_DIR, BIN_DIR, ensureDir } from './paths.js';
-
+import {
+    isValidVideoUrl,
+    sanitizeOutputTemplate,
+    filterExtraArgs,
+    buildQualityArgs,
+    extractFilename,
+    createProgressTracker,
+} from './ytdlp-args.js';
+import { savedOptionsToArgs } from './saved-options.js';
 
 const DEFAULT_CONCURRENCY = 3;
 const MAX_CONCURRENCY = 5;
+const MAX_ERROR_LENGTH = 2000;
+const MAX_TRACKED_JOBS = 500;
+const KILL_ESCALATION_MS = 5000;
 
 let jobs = new Map();
 let activeCount = 0;
 let maxConcurrency = DEFAULT_CONCURRENCY;
 let progressCallbacks = [];
 let jobCancelFlags = new Set();
-
-const QUALITY_MAP = {
-    best: 'bestvideo+bestaudio/best',
-    '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-    '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-    '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-};
-
-const DANGEROUS_FLAGS = ['--exec', '--exec-before-download', '--postprocessor-args', '--ppa', '--external-downloader-args', '--downloader-args'];
 
 function generateId() {
     return crypto.randomUUID();
@@ -36,8 +36,47 @@ function emitProgress(job) {
     }
 }
 
+// Only emit events for jobs that still exist in the queue, so removed/cancelled
+// jobs never resurface as ghost rows in the UI.
+function emitIfTracked(job) {
+    if (jobs.has(job.id)) emitProgress(job);
+}
+
+// Progress regexes expect whole lines; a chunk that splits a "[download]
+// Destination:" or "(frag N/M)" line would be missed. Buffer to \n boundaries
+// and forward only complete lines, keeping the partial tail for next time.
+function makeLineBuffer(onLines) {
+    let buf = '';
+    return (text) => {
+        buf += text;
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        if (lines.length) onLines(lines.join('\n') + '\n');
+    };
+}
+
+// SIGTERM first; if yt-dlp ignores it (stuck socket, wedged post-processor),
+// escalate to SIGKILL so the job's concurrency slot is always released.
+function terminateProcess(job) {
+    const proc = job._process;
+    if (!proc) return;
+    try { proc.kill('SIGTERM'); } catch {}
+    if (job._killTimer) clearTimeout(job._killTimer);
+    job._killTimer = setTimeout(() => {
+        try { proc.kill('SIGKILL'); } catch {}
+    }, KILL_ESCALATION_MS);
+    if (typeof job._killTimer.unref === 'function') job._killTimer.unref();
+}
+
+function clearKillTimer(job) {
+    if (job._killTimer) {
+        clearTimeout(job._killTimer);
+        job._killTimer = null;
+    }
+}
+
 export function setConcurrency(n) {
-    maxConcurrency = Math.max(1, Math.min(MAX_CONCURRENCY, n));
+    maxConcurrency = Math.max(1, Math.min(MAX_CONCURRENCY, Number(n) || DEFAULT_CONCURRENCY));
     processQueue();
 }
 
@@ -46,13 +85,20 @@ export function getConcurrency() {
 }
 
 export function addJob(url, options = {}) {
+    if (!isValidVideoUrl(url)) {
+        throw new Error('Invalid URL');
+    }
+    const outputTemplate = options.outputTemplate;
+    if (outputTemplate && !sanitizeOutputTemplate(outputTemplate)) {
+        throw new Error('Invalid output template');
+    }
     ensureDir(BIN_DIR);
     const id = generateId();
     const { title: titleOption, ...restOptions } = options;
     const job = {
         id,
         url,
-        title: titleOption || url,
+        title: typeof titleOption === 'string' ? titleOption.slice(0, 300) : url,
         status: 'queued',
         progress: 0,
         createdAt: Date.now(),
@@ -66,8 +112,23 @@ export function addJob(url, options = {}) {
         _process: null,
     };
     jobs.set(id, job);
+    pruneJobs();
     emitProgress(job);
+    processQueue();
     return id;
+}
+
+// The jobs map is unbounded state; drop oldest terminal jobs once it grows
+// beyond the cap so a spamming client can't grow memory indefinitely.
+function pruneJobs() {
+    if (jobs.size <= MAX_TRACKED_JOBS) return;
+    const terminal = Array.from(jobs.entries())
+        .filter(([, j]) => ['completed', 'failed', 'removed'].includes(j.status))
+        .sort((a, b) => a[1].createdAt - b[1].createdAt);
+    const toDelete = terminal.slice(0, jobs.size - MAX_TRACKED_JOBS);
+    for (const [id] of toDelete) {
+        jobs.delete(id);
+    }
 }
 
 export function getJobs() {
@@ -91,16 +152,14 @@ export function cancelJob(id) {
     if (!job) return false;
     if (job.status === 'queued') {
         jobs.delete(id);
-        emitProgress({ ...job, status: 'failed', error: 'Cancelled' });
+        emitProgress({ ...job, status: 'removed' });
         return true;
     }
     if (job.status === 'downloading') {
         jobCancelFlags.add(id);
         job.status = 'paused';
         emitProgress(job);
-        if (job._process) {
-            try { job._process.kill('SIGTERM'); } catch {}
-        }
+        terminateProcess(job);
         return true;
     }
     return false;
@@ -111,9 +170,7 @@ export function deleteJob(id) {
     if (!job) return false;
     if (job.status === 'downloading') {
         jobCancelFlags.add(id);
-        if (job._process) {
-            try { job._process.kill('SIGTERM'); } catch {}
-        }
+        terminateProcess(job);
     }
     jobs.delete(id);
     emitProgress({ ...job, status: 'removed' });
@@ -154,132 +211,128 @@ export function onProgress(callback) {
     };
 }
 
-async function processQueueInternal() {
-    if (activeCount >= maxConcurrency) return;
-
-    const queued = Array.from(jobs.values()).find(j => j.status === 'queued');
-    if (!queued) return;
-
-    activeCount++;
-    queued.status = 'downloading';
-    queued.progress = 0;
-    emitProgress(queued);
-    await executeJob(queued);
-    activeCount--;
-    processQueueInternal();
-}
-
+// Fills every free slot: while fewer than maxConcurrency jobs are running,
+// start the next queued job.
 export function processQueue() {
-    processQueueInternal();
+    while (activeCount < maxConcurrency) {
+        const queued = Array.from(jobs.values()).find(j => j.status === 'queued');
+        if (!queued) break;
+        activeCount++;
+        queued.status = 'downloading';
+        queued.progress = 0;
+        emitProgress(queued);
+        executeJob(queued)
+            .catch((err) => {
+                if (jobs.has(queued.id) && queued.status === 'downloading') {
+                    queued.status = 'failed';
+                    queued.error = String(err?.message || err).slice(0, MAX_ERROR_LENGTH);
+                    emitProgress(queued);
+                }
+            })
+            .finally(() => {
+                activeCount--;
+                processQueue();
+            });
+    }
 }
 
 async function executeJob(job) {
-    const binDir = getBinDir();
-    const ytdlpBin = resolveBinary('yt-dlp');
-    const downloadsDir = DOWNLOADS_DIR;
+    try {
+        const binDir = getBinDir();
+        const ytdlpBin = resolveBinary('yt-dlp');
+        const downloadsDir = DOWNLOADS_DIR;
+        ensureDir(downloadsDir);
 
-    if (!fs.existsSync(downloadsDir)) {
-        fs.mkdirSync(downloadsDir, { recursive: true });
-    }
-
-    const args = ['--no-warnings', '--ffmpeg-location', binDir, '-P', downloadsDir];
-
-    const { format, quality, audioOnly, audioFormat, outputTemplate, extraArgs } = job.options;
-
-    if (audioOnly) {
-        args.push('--extract-audio');
-        args.push('--audio-format', audioFormat || 'mp3');
-        args.push('-o', outputTemplate || '%(title)s.%(ext)s');
-    } else {
-        const ext = format || 'mp4';
-        if (format || quality) {
-            const baseSelector = QUALITY_MAP[quality] || QUALITY_MAP.best;
-            const selector = baseSelector.replace('/best', `[ext=${ext}]/best`).replace('bestvideo', `bestvideo[ext=${ext}]`).replace('bestaudio', `bestaudio[ext=${ext}]`);
-            args.push('-f', selector);
-        } else {
-            args.push('-f', 'best');
-        }
-        args.push('-o', outputTemplate || '%(title)s.%(ext)s');
-    }
-
-    if (extraArgs) {
-        let entries;
-        if (Array.isArray(extraArgs)) {
-            entries = extraArgs;
-        } else {
-            entries = Object.entries(extraArgs).map(([k, v]) => v === true ? k : [k, String(v)]).flat();
-        }
-        const filtered = [];
-        for (let i = 0; i < entries.length; i++) {
-            const flag = entries[i];
-            const isDangerous = DANGEROUS_FLAGS.some(df => flag === df || flag.startsWith(df + '=') || flag.startsWith('--' + df));
-            if (isDangerous) {
-                if (typeof entries[i+1] === 'string' && !entries[i+1].startsWith('-')) i++;
-                continue;
-            }
-            filtered.push(flag);
-        }
-        args.push(...filtered);
-    }
-
-    args.push('--newline');
-    args.push('--progress');
-    args.push('--no-simulate');
-    args.push(job.url);
-
-    return new Promise((resolve) => {
-        const proc = spawn(ytdlpBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-        job._process = proc;
-        let filename = '';
-        let errData = '';
-
-        proc.stdout.on('data', (data) => {
-            const text = data.toString();
-            filename += text;
-        });
-
-        proc.stderr.on('data', (data) => {
-            const text = data.toString();
-            errData += text;
-
-            const progressMatch = text.match(/\[download\]\s+(\d+\.?\d*)%/);
-            if (progressMatch) {
-                const pct = Math.round(parseFloat(progressMatch[1]));
-                if (pct !== job.progress) {
-                    job.progress = pct;
-                    emitProgress(job);
-                }
-            }
-        });
-
-        proc.on('close', (code) => {
-            job._process = null;
-            const wasCancelled = jobCancelFlags.has(job.id);
-            jobCancelFlags.delete(job.id);
-
-            if (wasCancelled) {
-                emitProgress(job);
-            } else if (code === 0) {
-                job.status = 'completed';
-                job.progress = 100;
-                const lines = filename.trim().split('\n');
-                job.filename = path.basename(lines[lines.length - 1].trim());
-                emitProgress(job);
-            } else {
-                job.status = 'failed';
-                job.error = errData.trim() || `Exit code ${code}`;
-                emitProgress(job);
-            }
-            resolve();
-        });
-
-        proc.on('error', (err) => {
-            job._process = null;
-            jobCancelFlags.delete(job.id);
+        if (!isValidVideoUrl(job.url)) {
             job.status = 'failed';
-            job.error = err.message;
+            job.error = 'Invalid URL';
             emitProgress(job);
-            resolve();
+            return;
+        }
+
+        const extraArgs = [
+            ...filterExtraArgs(job.options.extraArgs),
+            ...savedOptionsToArgs(),
+        ];
+        const args = buildQualityArgs(job.options, { binDir, downloadsDir, extraArgs });
+        args.push('--newline', '--progress', '--no-simulate');
+        args.push('--print', 'after_move:filename');
+        args.push('--', job.url);
+
+        return await new Promise((resolve) => {
+            const proc = spawn(ytdlpBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            job._process = proc;
+            let filename = '';
+            let errData = '';
+
+            // Depending on flags, yt-dlp emits "[download] x%" progress lines
+            // on stdout (measured empirically with --print + --no-simulate)
+            // or stderr — so watch both.
+            const expectedFiles = job.options.audioOnly ? 1 : 2;
+            job.expectedFiles = expectedFiles;
+            job.fileIndex = 1;
+            const trackProgress = createProgressTracker(job, expectedFiles);
+            const trackStdout = makeLineBuffer((lines) => { if (trackProgress(lines)) emitIfTracked(job); });
+            const trackStderr = makeLineBuffer((lines) => { if (trackProgress(lines)) emitIfTracked(job); });
+
+            proc.stdout.on('data', (data) => {
+                const text = data.toString();
+                trackStdout(text);
+                // Keep a rolling tail: the final `--print after_move:filename`
+                // line is always the last stdout output, so never let older
+                // progress noise push it out of the buffer.
+                if (filename.length + text.length > 200000) {
+                    filename = filename.slice(-100000);
+                }
+                filename += text;
+            });
+
+            proc.stderr.on('data', (data) => {
+                const text = data.toString();
+                trackStderr(text);
+                if (errData.length < 50000) errData += text;
+            });
+
+            proc.on('close', (code) => {
+                job._process = null;
+                clearKillTimer(job);
+                const wasCancelled = jobCancelFlags.has(job.id);
+                jobCancelFlags.delete(job.id);
+
+                if (wasCancelled) {
+                    emitIfTracked(job);
+                } else if (code === 0) {
+                    job.status = 'completed';
+                    job.progress = 100;
+                    job.filename = extractFilename(filename);
+                    emitIfTracked(job);
+                } else {
+                    job.status = 'failed';
+                    job.error = (errData.trim() || `Exit code ${code}`).slice(0, MAX_ERROR_LENGTH);
+                    emitIfTracked(job);
+                }
+                resolve();
+            });
+
+            proc.on('error', (err) => {
+                job._process = null;
+                clearKillTimer(job);
+                jobCancelFlags.delete(job.id);
+                job.status = 'failed';
+                job.error = String(err.message).slice(0, MAX_ERROR_LENGTH);
+                emitIfTracked(job);
+                resolve();
+            });
         });
-    });
+    } catch (err) {
+        // Never let a setup failure escape: it would become an unhandled
+        // rejection and leak the queue slot permanently. Guard against ghost
+        // events (job removed mid-setup) and don't clobber a cancelled job's
+        // paused status.
+        if (jobs.has(job.id) && (job.status === 'downloading' || job.status === 'queued')) {
+            job.status = 'failed';
+            job.error = String(err?.message || err).slice(0, MAX_ERROR_LENGTH);
+            emitIfTracked(job);
+        }
+    }
 }

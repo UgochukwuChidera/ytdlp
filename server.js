@@ -3,19 +3,18 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import os from 'os';
-import { spawn, exec } from 'child_process';
-import ytDlp from 'yt-dlp-exec';
+import { spawn } from 'child_process';
 import {
     checkBinaries,
     getBinDir,
-    downloadBinaries,
+    resolveBinary,
     downloadYtdlp,
     downloadFfmpeg,
     getLatestYtdlpVersion,
     getLatestFfmpegVersion,
 } from './src/binary-manager.js';
-import { DOWNLOADS_DIR, BIN_DIR } from './src/paths.js';
+import { DOWNLOADS_DIR, BIN_DIR, DATA_DIR } from './src/paths.js';
+import https from 'node:https';
 import {
     addJob,
     getJobs,
@@ -39,32 +38,87 @@ import {
     scrapeChannelVideos,
 } from './src/channel-manager.js';
 import { YTDLP_OPTIONS } from './src/ytdlp-options.js';
-const YTDLP_OPTIONS_DEFAULTS = JSON.parse(JSON.stringify(YTDLP_OPTIONS));
+import {
+    isValidVideoUrl,
+    sanitizeOutputTemplate,
+    filterExtraArgs,
+    buildQualityArgs,
+    extractFilename,
+} from './src/ytdlp-args.js';
+import {
+    applySavedOptions,
+    resetSavedOptions,
+    getSavedOptions,
+    savedOptionsToArgs,
+} from './src/saved-options.js';
+import { dumpJson } from './src/ytdlp-runner.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const downloadsDir = DOWNLOADS_DIR;
 
-const QUALITY_MAP = {
-    best: 'bestvideo+bestaudio/best',
-    '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-    '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-    '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-};
-
-const DANGEROUS_FLAGS = ['--exec', '--exec-before-download', '--postprocessor-args', '--ppa', '--external-downloader-args', '--downloader-args'];
-
 const app = express();
 
-app.use(cors());
+// The Vue app is served same-origin, so no cross-origin API access is needed.
+app.use(cors({ origin: process.env.CORS_ORIGIN || false }));
+// DNS-rebinding guard: a malicious page can rebind its domain to 127.0.0.1
+// and then read the loopback API same-origin. Reject any Host we don't serve.
+// req.hostname strips the port and handles IPv6 brackets correctly.
+const ALLOWED_HOSTS = new Set(
+    (process.env.ALLOWED_HOSTS || 'localhost,127.0.0.1,::1,ytdlp.local')
+        .split(',')
+        .map(h => h.trim().toLowerCase())
+        .filter(Boolean)
+);
+app.use((req, res, next) => {
+    const host = (req.hostname || '').toLowerCase();
+    if (host && !ALLOWED_HOSTS.has(host)) {
+        return res.status(403).json({ error: 'Forbidden host' });
+    }
+    next();
+});
+// HTTPS: when the local CA + server cert exist (npm run tls:install), serve
+// TLS on 443 and bounce plain HTTP on port 80 over to it. Port 4444 keeps
+// serving plain HTTP (bookmarks, curl status checks, dev tooling).
+const TLS_DIR = process.env.TLS_DIR || path.join(DATA_DIR, 'tls');
+const TLS_CERT = path.join(TLS_DIR, 'server.crt');
+const TLS_KEY = path.join(TLS_DIR, 'server.key');
+const tlsEnabled = process.env.TLS !== '0' && fs.existsSync(TLS_CERT) && fs.existsSync(TLS_KEY);
+const tlsOptions = tlsEnabled ? { key: fs.readFileSync(TLS_KEY), cert: fs.readFileSync(TLS_CERT) } : null;
+if (tlsEnabled) {
+    app.use((req, res, next) => {
+        if (req.socket.localPort === 80 && req.hostname) {
+            return res.redirect(308, `https://${String(req.headers.host).replace(/:80$/, '')}${req.originalUrl}`);
+        }
+        next();
+    });
+}
 app.use(express.json());
-// Serve Vue frontend build if available, fallback to public/
+// Express 5 leaves req.body undefined for non-JSON content types; routes
+// destructure it directly, so default to {} to fail cleanly instead of 500.
+app.use((req, res, next) => {
+    if (req.body === undefined) req.body = {};
+    next();
+});
 const vueDist = path.join(__dirname, 'frontend', 'dist');
-const publicDir = path.join(__dirname, 'public');
-app.use(express.static(fs.existsSync(vueDist) ? vueDist : publicDir));
+app.use(express.static(vueDist));
 
 if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
+}
+
+function deepClone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+// Resolve a request filename to a path strictly inside the downloads dir.
+// Rejects path separators and traversal segments.
+function safeFilePath(filename) {
+    if (typeof filename !== 'string') return null;
+    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) return null;
+    const resolved = path.resolve(downloadsDir, filename);
+    if (path.dirname(resolved) !== path.resolve(downloadsDir)) return null;
+    return resolved;
 }
 
 app.get('/api/status', (req, res) => {
@@ -75,6 +129,7 @@ app.get('/api/status', (req, res) => {
 
         res.json({
             binaries,
+            binDir: BIN_DIR,
             queue: {
                 jobs,
                 concurrency,
@@ -83,7 +138,7 @@ app.get('/api/status', (req, res) => {
                 completed: jobs.filter(j => j.status === 'completed').length,
                 failed: jobs.filter(j => j.status === 'failed').length,
             },
-            options: YTDLP_OPTIONS,
+            options: deepClone(YTDLP_OPTIONS),
         });
     } catch (error) {
         console.error('Status error:', error);
@@ -105,13 +160,10 @@ app.get('/api/updates', async (req, res) => {
         function isUpdateAvailable(installed, latest) {
             // Can't determine update if either version is missing/unknown
             if (!installed || !latest || latest === 'unknown') return false;
-            // Only compare if both are the same format (both semver-like)
-            const isSemver = (v) => /^\d+\.\d+/.test(v);
-            if (isSemver(installed) && isSemver(latest)) {
-                return installed !== latest;
-            }
-            // Incomparable formats (e.g. git build vs semver) — can't determine
-            return false;
+            // versionLte returns null when the formats are incomparable
+            // (e.g. git build vs date build) — treat that as "no update info".
+            const lte = versionLte(installed, latest);
+            return lte === false;
         }
 
         res.json({
@@ -132,20 +184,58 @@ app.get('/api/updates', async (req, res) => {
     }
 });
 
+// Returns true if current <= latest, false if current is newer,
+// and null when the version formats cannot be compared.
 function versionLte(current, latest) {
-    if (!current) return false;
-    const curParts = current.split(/[. ]/).map(s => parseInt(s, 10));
-    const latParts = latest.split(/[. ]/).map(s => parseInt(s, 10));
+    if (!current || !latest || current === 'unknown' || latest === 'unknown') return false;
+
+    // Compare ffmpeg build dates (installed: "N-125118-g...-20260619",
+    // latest release: "2026-06-19").
+    const dateOf = (v) => {
+        let m = String(v).match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+        m = String(v).match(/(\d{8})$/);
+        if (m) {
+            const s = m[1];
+            return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+        }
+        return null;
+    };
+    const currentDate = dateOf(current);
+    const latestDate = dateOf(latest);
+    if (currentDate && latestDate) {
+        return currentDate <= latestDate;
+    }
+    // Only compare dates when both sides carry one; a git-hash version
+    // and a semver never mix.
+    if (currentDate !== latestDate) return null;
+
+    const parse = (v) => v.split(/[. ]/).map(s => {
+        const n = parseInt(s, 10);
+        return Number.isNaN(n) ? null : n;
+    });
+    const curParts = parse(current);
+    const latParts = parse(latest);
+    if (curParts.some(p => p === null) || latParts.some(p => p === null)) return null;
     for (let i = 0; i < Math.max(curParts.length, latParts.length); i++) {
-        const c = curParts[i] || 0;
-        const l = latParts[i] || 0;
+        const c = curParts[i] ?? 0;
+        const l = latParts[i] ?? 0;
         if (c < l) return true;
         if (c > l) return false;
     }
     return true;
 }
 
+// Cross-site <img>/EventSource requests can trigger binary downloads from any
+// webpage (same Host, so the rebinding guard doesn't apply). Modern browsers
+// always send Sec-Fetch-Site; enforce it when present.
+function isSameOriginFetch(req) {
+    const site = req.headers['sec-fetch-site'];
+    return !site || site === 'same-origin' || site === 'none';
+}
+
 app.get('/api/setup', async (req, res) => {
+    if (!isSameOriginFetch(req)) return res.status(403).json({ error: 'Cross-site setup requests are not allowed' });
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -188,7 +278,7 @@ app.get('/api/setup', async (req, res) => {
         const curYtdlp = currentBinaries.find(b => b.name === 'yt-dlp');
         const curFfmpeg = currentBinaries.find(b => b.name === 'ffmpeg');
 
-        if (curYtdlp && !curYtdlp.corrupt && versionLte(latestYtdlp, curYtdlp.version)) {
+        if (curYtdlp && !curYtdlp.corrupt && versionLte(curYtdlp.version, latestYtdlp) === true) {
             sendMsg({ step: 'yt-dlp', status: 'done', percent: 100, skipped: true });
         } else {
             await downloadYtdlp((name, percent) => {
@@ -197,7 +287,7 @@ app.get('/api/setup', async (req, res) => {
             sendMsg({ step: 'yt-dlp', status: 'done', percent: 100 });
         }
 
-        if (curFfmpeg && !curFfmpeg.corrupt && versionLte(latestFfmpeg, curFfmpeg.version)) {
+        if (curFfmpeg && !curFfmpeg.corrupt && versionLte(curFfmpeg.version, latestFfmpeg) === true) {
             sendMsg({ step: 'ffmpeg', status: 'done', percent: 100, skipped: true });
         } else {
             await downloadFfmpeg((name, percent) => {
@@ -216,6 +306,7 @@ app.get('/api/setup', async (req, res) => {
 });
 
 app.get('/api/setup/download/:binary', async (req, res) => {
+    if (!isSameOriginFetch(req)) return res.status(403).json({ error: 'Cross-site setup requests are not allowed' });
     const { binary } = req.params;
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -231,16 +322,12 @@ app.get('/api/setup/download/:binary', async (req, res) => {
     });
 
     try {
-        const [latestVersion, latestFfmpegVersion] = await Promise.all([
-            getLatestYtdlpVersion(),
-            getLatestFfmpegVersion(),
-        ]);
-
         const currentBinaries = checkBinaries();
 
         if (binary === 'yt-dlp') {
             const cur = currentBinaries.find(b => b.name === 'yt-dlp');
-            if (cur && !cur.corrupt && versionLte(latestVersion, cur.version)) {
+            const latestVersion = await getLatestYtdlpVersion();
+            if (cur && !cur.corrupt && versionLte(cur.version, latestVersion) === true) {
                 sendMsg({ step: 'yt-dlp', status: 'done', percent: 100, skipped: true });
             } else {
                 sendMsg({ step: 'yt-dlp', status: 'starting', percent: 0 });
@@ -251,7 +338,8 @@ app.get('/api/setup/download/:binary', async (req, res) => {
             }
         } else if (binary === 'ffmpeg' || binary === 'ffprobe') {
             const cur = currentBinaries.find(b => b.name === 'ffmpeg');
-            if (cur && !cur.corrupt && versionLte(latestFfmpegVersion, cur.version)) {
+            const latestFfmpegVersion = await getLatestFfmpegVersion();
+            if (cur && !cur.corrupt && versionLte(cur.version, latestFfmpegVersion) === true) {
                 sendMsg({ step: 'ffmpeg', status: 'done', percent: 100, skipped: true });
             } else {
                 sendMsg({ step: 'ffmpeg', status: 'starting', percent: 0 });
@@ -275,20 +363,15 @@ app.get('/api/setup/download/:binary', async (req, res) => {
 });
 
 app.get('/api/options', (req, res) => {
-    res.json(YTDLP_OPTIONS);
+    res.json({ _platform: process.platform, ...deepClone(YTDLP_OPTIONS), saved: getSavedOptions() });
 });
 
 app.get('/api/format-list', async (req, res) => {
     const { url } = req.query;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!isValidVideoUrl(url)) return res.status(400).json({ error: 'URL is required' });
 
     try {
-        const data = await ytDlp(url, {
-            dumpSingleJson: true,
-            noPlaylist: true,
-            noWarnings: true,
-            noCallHome: true,
-        });
+        const data = await dumpJson(url, ['--no-playlist']);
         const formats = Array.isArray(data) ? data : (data.formats || []);
         res.json(formats);
     } catch (error) {
@@ -299,16 +382,10 @@ app.get('/api/format-list', async (req, res) => {
 
 app.get('/api/metadata', async (req, res) => {
     const { url } = req.query;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!isValidVideoUrl(url)) return res.status(400).json({ error: 'URL is required' });
 
     try {
-        const metadata = await ytDlp(url, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            noCallHome: true,
-            preferFreeFormats: true,
-            youtubeSkipDashManifest: true,
-        });
+        const metadata = await dumpJson(url, ['--prefer-free-formats', '--youtube-skip-dash-manifest']);
         res.json(metadata);
     } catch (error) {
         console.error('Metadata fetch error:', error);
@@ -318,14 +395,10 @@ app.get('/api/metadata', async (req, res) => {
 
 app.get('/api/scrape', async (req, res) => {
     const { url } = req.query;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!isValidVideoUrl(url)) return res.status(400).json({ error: 'URL is required' });
 
     try {
-        const data = await ytDlp(url, {
-            dumpSingleJson: true,
-            flatPlaylist: true,
-            noWarnings: true,
-        });
+        const data = await dumpJson(url, ['--flat-playlist']);
         res.json(data);
     } catch (error) {
         console.error('Scrape error:', error);
@@ -335,83 +408,69 @@ app.get('/api/scrape', async (req, res) => {
 
 app.post('/api/download', (req, res) => {
     const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!isValidVideoUrl(url)) {
+        return res.status(400).json({ error: 'A valid http(s) URL is required' });
+    }
+
+    const { outputTemplate, extraArgs, format, quality, audioOnly, audioFormat } = req.body;
+    if (outputTemplate && !sanitizeOutputTemplate(outputTemplate)) {
+        return res.status(400).json({ error: 'Invalid output template' });
+    }
 
     try {
-        const binDir = getBinDir();
-        const ytdlpBin = path.join(binDir, 'yt-dlp');
+        const ytdlpBin = resolveBinary('yt-dlp');
         if (!fs.existsSync(ytdlpBin)) {
             return res.status(500).json({ error: 'yt-dlp binary not found. Please run setup first.' });
         }
 
-        const { format, quality, audioOnly, audioFormat, outputTemplate, extraArgs } = req.body;
-        const args = [
-            '--no-warnings',
-            '--ffmpeg-location', binDir,
-            '-P', downloadsDir,
+        const binDir = getBinDir();
+        const extraArgsFiltered = [
+            ...filterExtraArgs(extraArgs),
+            ...savedOptionsToArgs(),
         ];
-
-        if (audioOnly) {
-            args.push('--extract-audio');
-            args.push('--audio-format', audioFormat || 'mp3');
-            args.push('-o', outputTemplate || '%(title)s.%(ext)s');
-        } else {
-            const ext = format || 'mp4';
-            if (format || quality) {
-                const baseSelector = QUALITY_MAP[quality] || QUALITY_MAP.best;
-                const selector = baseSelector.replace('/best', `[ext=${ext}]/best`).replace('bestvideo', `bestvideo[ext=${ext}]`).replace('bestaudio', `bestaudio[ext=${ext}]`);
-                args.push('-f', selector);
-            } else {
-                args.push('-f', 'best');
-            }
-            args.push('-o', outputTemplate || '%(title)s.%(ext)s');
-        }
-
-        if (extraArgs) {
-            let entries;
-            if (Array.isArray(extraArgs)) {
-                entries = extraArgs;
-            } else {
-                entries = Object.entries(extraArgs).map(([k, v]) => v === true ? k : [k, String(v)]).flat();
-            }
-            const filtered = [];
-            for (let i = 0; i < entries.length; i++) {
-                const flag = entries[i];
-                const isDangerous = DANGEROUS_FLAGS.some(df => flag === df || flag.startsWith(df + '=') || flag.startsWith('--' + df));
-                if (isDangerous) {
-                    if (typeof entries[i+1] === 'string' && !entries[i+1].startsWith('-')) i++;
-                    continue;
-                }
-                filtered.push(flag);
-            }
-            args.push(...filtered);
-        }
-
-        args.push('--print', 'filename');
+        const args = buildQualityArgs(
+            { format, quality, audioOnly, audioFormat, outputTemplate },
+            { binDir, downloadsDir, extraArgs: extraArgsFiltered },
+        );
+        args.push('--print', 'after_move:filename');
         args.push('--no-simulate');
-        args.push(url);
+        // `--` ensures the URL can never be parsed as a yt-dlp flag.
+        args.push('--', url);
 
         const subprocess = spawn(ytdlpBin, args);
         let filename = '';
         let errData = '';
 
+        // If the client aborts (navigated away, closed the tab), don't leave
+        // yt-dlp running to completion unmonitored.
+        req.on('close', () => {
+            if (!res.writableEnded) {
+                try { subprocess.kill('SIGTERM'); } catch {}
+            }
+        });
+
         subprocess.stdout.on('data', (data) => {
-            filename += data.toString();
+            const text = data.toString();
+            // Rolling tail: the final filename print is always the last
+            // stdout output, so don't let progress noise push it out.
+            if (filename.length + text.length > 200000) {
+                filename = filename.slice(-100000);
+            }
+            filename += text;
         });
 
         subprocess.stderr.on('data', (data) => {
-            errData += data.toString();
+            if (errData.length < 50000) errData += data.toString();
             console.error(`yt-dlp stderr: ${data}`);
         });
 
         subprocess.on('close', (code) => {
+            if (res.writableEnded) return;
             if (code === 0) {
-                const lines = filename.trim().split('\n');
-                const finalFilename = path.basename(lines[lines.length - 1].trim());
-                res.json({ success: true, filename: finalFilename });
+                res.json({ success: true, filename: extractFilename(filename) });
             } else {
                 console.error('yt-dlp exited with code', code);
-                res.status(500).json({ error: 'Download failed', details: errData });
+                res.status(500).json({ error: 'Download failed', details: errData.slice(0, 2000) });
             }
         });
 
@@ -423,7 +482,9 @@ app.post('/api/download', (req, res) => {
         });
     } catch (error) {
         console.error('Download init error:', error);
-        res.status(500).json({ error: 'Failed to initiate download' });
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to initiate download' });
+        }
     }
 });
 
@@ -434,6 +495,18 @@ app.post('/api/download/queue/cancel-all', (req, res) => {
     } catch (error) {
         console.error('Cancel all error:', error);
         res.status(500).json({ error: 'Failed to cancel all jobs' });
+    }
+});
+
+// Cancel (pause) a single job without removing it from the queue.
+app.post('/api/download/queue/cancel/:id', (req, res) => {
+    try {
+        const ok = cancelJob(req.params.id);
+        if (!ok) return res.status(400).json({ error: 'Job not found or not cancellable' });
+        res.json({ success: true, message: 'Job paused' });
+    } catch (error) {
+        console.error('Queue cancel error:', error);
+        res.status(500).json({ error: 'Failed to cancel job' });
     }
 });
 
@@ -456,7 +529,12 @@ app.get('/api/download/queue/events', (req, res) => {
 
 app.post('/api/download/queue', (req, res) => {
     const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!isValidVideoUrl(url)) {
+        return res.status(400).json({ error: 'A valid http(s) URL is required' });
+    }
+    if (req.body.outputTemplate && !sanitizeOutputTemplate(req.body.outputTemplate)) {
+        return res.status(400).json({ error: 'Invalid output template' });
+    }
 
     try {
         const id = addJob(url, req.body);
@@ -473,8 +551,15 @@ app.post('/api/download/queue/batch', (req, res) => {
     if (!urls || !Array.isArray(urls) || urls.length === 0) {
         return res.status(400).json({ error: 'URLs array is required' });
     }
+    if (!urls.every(isValidVideoUrl)) {
+        return res.status(400).json({ error: 'All URLs must be valid http(s) URLs' });
+    }
+    if (req.body.outputTemplate && !sanitizeOutputTemplate(req.body.outputTemplate)) {
+        return res.status(400).json({ error: 'Invalid output template' });
+    }
     try {
-        const jobs = urls.map(url => {
+        const titles = Array.isArray(req.body.titles) ? req.body.titles : [];
+        const jobs = urls.map((url, i) => {
             const id = addJob(url, {
                 format: req.body.format,
                 quality: req.body.quality,
@@ -482,7 +567,7 @@ app.post('/api/download/queue/batch', (req, res) => {
                 audioFormat: req.body.audioFormat,
                 outputTemplate: req.body.outputTemplate,
                 options: req.body.options,
-                title: title || url,
+                title: (typeof titles[i] === 'string' && titles[i]) || title || url,
             });
             return { jobId: id, url };
         });
@@ -568,7 +653,9 @@ app.get('/api/channels', (req, res) => {
 
 app.post('/api/channels', async (req, res) => {
     const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!isValidVideoUrl(url)) {
+        return res.status(400).json({ error: 'A valid http(s) URL is required' });
+    }
 
     try {
         const channel = await subscribe(url);
@@ -634,25 +721,30 @@ app.get('/api/files', (req, res) => {
     fs.readdir(downloadsDir, (err, files) => {
         if (err) return res.status(500).json({ error: 'Failed to list files' });
 
+        // A file can vanish between readdir and stat (active downloads,
+        // concurrent deletes) — skip it instead of crashing the server.
         const fileInfos = files.map(file => {
-            const stats = fs.statSync(path.join(downloadsDir, file));
-            return {
-                name: file,
-                size: stats.size,
-                created: stats.birthtime,
-            };
-        }).sort((a, b) => b.created - a.created);
+            try {
+                const stats = fs.statSync(path.join(downloadsDir, file));
+                return {
+                    name: file,
+                    size: stats.size,
+                    created: stats.birthtime,
+                };
+            } catch {
+                return null;
+            }
+        }).filter(Boolean).sort((a, b) => b.created - a.created);
 
         res.json(fileInfos);
     });
 });
 
 app.get('/api/files/:filename', (req, res) => {
-    const filename = req.params.filename;
-    if (filename.includes('/') || filename.includes('..')) {
+    const filePath = safeFilePath(req.params.filename);
+    if (!filePath) {
         return res.status(400).json({ error: 'Invalid filename' });
     }
-    const filePath = path.join(downloadsDir, filename);
     if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'File not found' });
     }
@@ -660,11 +752,10 @@ app.get('/api/files/:filename', (req, res) => {
 });
 
 app.delete('/api/files/:filename', (req, res) => {
-    const filename = req.params.filename;
-    if (filename.includes('/') || filename.includes('..')) {
+    const filePath = safeFilePath(req.params.filename);
+    if (!filePath) {
         return res.status(400).json({ error: 'Invalid filename' });
     }
-    const filePath = path.join(downloadsDir, filename);
     if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'File not found' });
     }
@@ -699,25 +790,21 @@ app.delete('/api/files', (req, res) => {
 
 // ======================== OPTIONS ENDPOINTS ========================
 
+// Applies user-saved options, validated against the option catalogue.
+// The catalogue itself (YTDLP_OPTIONS) is never mutated by requests.
 app.post('/api/options/apply', (req, res) => {
     try {
-        const { options } = req.body;
-        if (options && typeof options === 'object') {
-            for (const [key, value] of Object.entries(options)) {
-                YTDLP_OPTIONS[key] = value;
-            }
-        }
-        res.json({ success: true });
+        const applied = applySavedOptions(req.body?.options);
+        res.json({ success: true, applied });
     } catch (error) {
         console.error('Options apply error:', error);
-        res.status(500).json({ error: 'Failed to apply options' });
+        res.status(400).json({ error: error.message || 'Failed to apply options' });
     }
 });
 
 app.post('/api/options/reset', (req, res) => {
     try {
-        Object.keys(YTDLP_OPTIONS).forEach(key => delete YTDLP_OPTIONS[key]);
-        Object.assign(YTDLP_OPTIONS, JSON.parse(JSON.stringify(YTDLP_OPTIONS_DEFAULTS)));
+        resetSavedOptions();
         res.json({ success: true });
     } catch (error) {
         console.error('Options reset error:', error);
@@ -755,15 +842,28 @@ const folderPaths = {
     bin: BIN_DIR,
 };
 
+function openWithSystemHandler(target, cb) {
+    // spawn with an argv array — never build a shell string, or crafted
+    // filenames become shell command injection.
+    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
+    const subprocess = spawn(cmd, [target], { detached: true, stdio: 'ignore' });
+    subprocess.on('error', (err) => cb(err));
+    subprocess.on('close', (code) => cb(code === 0 ? null : new Error(`Exited with code ${code}`)));
+    subprocess.unref();
+}
+
 app.post('/api/open-folder', (req, res) => {
     try {
         const { folder } = req.body;
+        if (!Object.hasOwn(folderPaths, folder)) return res.status(400).json({ error: 'Unknown folder' });
         const dir = folderPaths[folder];
         if (!dir) return res.status(400).json({ error: 'Unknown folder' });
         if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Folder not found' });
-        const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-        exec(`"${cmd}" "${dir}"`, (err) => {
-            if (err) return res.status(500).json({ error: 'Failed to open folder' });
+        openWithSystemHandler(dir, (err) => {
+            if (err || res.writableEnded) {
+                if (err && !res.writableEnded) return res.status(500).json({ error: 'Failed to open folder' });
+                return;
+            }
             res.json({ success: true });
         });
     } catch (error) {
@@ -773,17 +873,23 @@ app.post('/api/open-folder', (req, res) => {
 
 app.post('/api/open-file/:filename', (req, res) => {
     try {
-        const filename = req.params.filename;
-        if (filename.includes('/') || filename.includes('..')) {
+        const filePath = safeFilePath(req.params.filename);
+        if (!filePath) {
             return res.status(400).json({ error: 'Invalid filename' });
         }
-        const filePath = path.join(downloadsDir, filename);
+        // yt-dlp titles control filenames; opening an attacker-named
+        // .desktop/.bat/.lnk would let the OS execute it. Only allow media.
+        if (!/\.(mp4|mkv|webm|m4v|mp3|m4a|opus|ogg|flac|wav|aac|srt|vtt|jpg|jpeg|png|webp|gif)$/i.test(filePath)) {
+            return res.status(400).json({ error: 'Not an openable media file' });
+        }
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'File not found' });
         }
-        const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-        exec(`"${cmd}" "${filePath}"`, (err) => {
-            if (err) return res.status(500).json({ error: 'Failed to open file' });
+        openWithSystemHandler(filePath, (err) => {
+            if (err || res.writableEnded) {
+                if (err && !res.writableEnded) return res.status(500).json({ error: 'Failed to open file' });
+                return;
+            }
             res.json({ success: true });
         });
     } catch (error) {
@@ -793,8 +899,13 @@ app.post('/api/open-file/:filename', (req, res) => {
 
 // SPA fallback for Vue Router - serve index.html for all non-API routes
 const indexPath = path.join(__dirname, 'frontend', 'dist', 'index.html');
-app.get('*', (req, res, next) => {
+app.use((req, res, next) => {
+    // Skip API routes and asset paths
     if (req.path.startsWith('/api/') || req.path.startsWith('/assets/')) {
+        return next();
+    }
+    // Only handle GET requests for HTML navigation
+    if (req.method !== 'GET') {
         return next();
     }
     if (fs.existsSync(indexPath)) {
@@ -804,11 +915,84 @@ app.get('*', (req, res, next) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+// The systemd service passes PORTS=80,4444 so the bare `ytdlp.local` URL
+// works (port 80) while the old `:4444` bookmark keeps working too. Binding
+// a low port needs net.ipv4.ip_unprivileged_port_start lowered once (README);
+// the server skips ports it can't bind instead of dying. A manual `npm start`
+// just uses PORT/4444.
+const PORTS = (process.env.PORTS || process.env.PORT || 4444)
+    .toString()
+    .split(',')
+    .map((p) => parseInt(p.trim(), 10))
+    .filter((p) => Number.isInteger(p) && p > 0 && p < 65536);
+if (PORTS.length === 0) PORTS.push(4444);
+// Bind to loopback by default: the API has no authentication, so exposing it
+// on all interfaces would hand the LAN an unauthenticated remote-code path.
+const HOST = process.env.HOST || '127.0.0.1';
 if (process.env.NODE_ENV !== 'test') {
-    app.listen(PORT, () => {
-        console.log(`Server listening on port ${PORT}`);
-    });
+    // Express 5 quirk: the listen callback can fire with address() === null
+    // when the bind FAILS (port already taken), so verify the address and
+    // treat it as a failed bind.
+    // Multi-port tolerance: binding e.g. 80 may fail (no privilege yet) while
+    // 4444 works — only exit if NOTHING could bind, so systemd's
+    // Restart=on-failure doesn't take the working port down with it.
+    let bound = 0;
+    let settled = 0;
+    let total = PORTS.length;
+    if (tlsEnabled) total += 1;
+    const maybeFail = () => {
+        if (settled === total && bound === 0) {
+            console.error(`Failed to bind any of ${HOST}:${PORTS.join(', ')} — is another instance already running?`);
+            process.exit(1);
+        }
+    };
+    for (const port of PORTS) {
+        const server = app.listen(port, HOST, () => {
+            if (!server.address()) {
+                // Express 5 quirk: on a failed bind the callback fires with a
+                // null address BEFORE the 'error' event — do not count this as
+                // settled, the error event below will.
+                console.error(`Failed to bind ${HOST}:${port}`);
+                setTimeout(maybeFail, 250);
+                return;
+            }
+            settled++;
+            bound++;
+            console.log(`Server listening on http://${HOST}:${port}`);
+            maybeFail();
+        });
+        server.on('error', (err) => {
+            settled++;
+            console.error(`Could not bind ${HOST}:${port}: ${err.message}`);
+            maybeFail();
+        });
+    }
+    if (tlsEnabled) {
+        const tlsServer = https.createServer(tlsOptions, app);
+        tlsServer.listen(443, HOST, () => {
+            settled++;
+            bound++;
+            console.log(`Server listening on https://${HOST}:443`);
+            maybeFail();
+        });
+        tlsServer.on('error', (err) => {
+            settled++;
+            console.error(`Could not bind ${HOST}:443: ${err.message}`);
+            maybeFail();
+        });
+    }
 }
+
+// Don't orphan running yt-dlp children when the server goes down.
+let shuttingDown = false;
+function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`Received ${signal}, cancelling downloads and exiting...`);
+    try { cancelAll(); } catch {}
+    process.exit(0);
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 export default app;
