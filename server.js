@@ -876,14 +876,73 @@ const folderPaths = {
     bin: BIN_DIR,
 };
 
-function openWithSystemHandler(target, cb) {
+// When started by systemd --user at boot, the process has no DISPLAY /
+// WAYLAND_DISPLAY, so xdg-open can't reach the desktop session. Discover the
+// active session's display env from the runtime dir and merge it into the
+// child env so the file manager opens on the real desktop.
+function systemOpenEnv() {
+    const env = { ...process.env };
+    if (process.platform === 'linux' || process.platform === 'freebsd') {
+        const runtimeDir = env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`;
+        env.XDG_RUNTIME_DIR = runtimeDir;
+        if (!env.DBUS_SESSION_BUS_ADDRESS) {
+            env.DBUS_SESSION_BUS_ADDRESS = `unix:path=${runtimeDir}/bus`;
+        }
+        if (!env.WAYLAND_DISPLAY) {
+            try {
+                const waylandSocket = fs.readdirSync(runtimeDir)
+                    .filter((f) => /^wayland-\d+$/.test(f))
+                    .sort()
+                    .pop();
+                if (waylandSocket) env.WAYLAND_DISPLAY = waylandSocket;
+            } catch { /* runtime dir unreadable */ }
+        }
+        if (!env.DISPLAY) {
+            try {
+                const xSocket = fs.readdirSync('/tmp/.X11-unix')
+                    .filter((f) => /^X\d+$/.test(f))
+                    .sort()
+                    .pop();
+                if (xSocket) env.DISPLAY = `:${xSocket.slice(1)}`;
+            } catch { /* no X sockets */ }
+        }
+    }
+    return env;
+}
+
+function openWithSystemHandler(target, cb, order) {
     // spawn with an argv array — never build a shell string, or crafted
     // filenames become shell command injection.
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
-    const subprocess = spawn(cmd, [target], { detached: true, stdio: 'ignore' });
-    subprocess.on('error', (err) => cb(err));
-    subprocess.on('close', (code) => cb(code === 0 ? null : new Error(`Exited with code ${code}`)));
-    subprocess.unref();
+    const env = systemOpenEnv();
+    const candidates = process.platform === 'darwin' ? ['open']
+        : process.platform === 'win32' ? ['explorer']
+        : (order || ['xdg-open', 'gio']);
+    const attempt = (i) => {
+        if (i >= candidates.length) return cb(new Error('No file opener available'));
+        const cmd = candidates[i];
+        const args = cmd === 'gio' ? ['open', target] : [target];
+        const subprocess = spawn(cmd, args, { detached: true, stdio: 'ignore', env });
+        let settled = false;
+        const done = (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(linger);
+            cb(err);
+        };
+        // Some xdg-open paths (generic/DE-detection fallbacks) stay alive for
+        // as long as the launched app runs. A launched-but-lingering opener
+        // is success — don't hold the HTTP response until the app closes.
+        const linger = setTimeout(() => done(null), 2000);
+        subprocess.on('error', () => { clearTimeout(linger); attempt(i + 1); }); // not installed → next
+        subprocess.on('close', (code) => {
+            if (code === 0) return done(null);
+            clearTimeout(linger);
+            if (i + 1 < candidates.length) return attempt(i + 1);
+            done(new Error(`Exited with code ${code}`));
+        });
+        subprocess.unref();
+    };
+    attempt(0);
 }
 
 app.post('/api/open-folder', (req, res) => {
@@ -893,13 +952,16 @@ app.post('/api/open-folder', (req, res) => {
         const dir = folderPaths[folder];
         if (!dir) return res.status(400).json({ error: 'Unknown folder' });
         if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Folder not found' });
+        // gio first: xdg-open execs Terminal=true handlers (e.g. yazi) raw,
+        // without a TTY, and they die instantly while xdg-open reports success.
+        // gio routes Terminal=true apps through a real terminal emulator.
         openWithSystemHandler(dir, (err) => {
             if (err || res.writableEnded) {
                 if (err && !res.writableEnded) return res.status(500).json({ error: 'Failed to open folder' });
                 return;
             }
             res.json({ success: true });
-        });
+        }, ['gio', 'xdg-open']);
     } catch (error) {
         res.status(500).json({ error: 'Failed to open folder' });
     }

@@ -43,7 +43,33 @@ function runOrWarn(cmd) {
     }
 }
 
+// "Open file/folder" uses xdg-open with a gio fallback (both on PATH).
+// systemd user units start without DISPLAY, so the server discovers the
+// session env itself — but at least one opener binary must exist.
+function checkOpenersLinux() {
+    const has = (cmd) => {
+        try {
+            run(`command -v ${cmd} >/dev/null 2>&1`);
+            return true;
+        } catch { return false; }
+    };
+    const ok = has('xdg-open') || has('gio');
+    if (!ok) {
+        console.warn('⚠  Neither xdg-open nor gio was found on PATH.');
+        console.warn('   The "Open file/folder" buttons need one of them:');
+        console.warn('     Debian/Ubuntu:  sudo apt install xdg-utils');
+        console.warn('     Arch:           sudo pacman -S xdg-utils');
+        console.warn('     Fedora:         sudo dnf install xdg-user-dirs xdg-utils');
+        console.warn('     openSUSE:       sudo zypper install xdg-utils');
+        console.warn('   (gio from glib2 is the fallback — any one is enough.)');
+    } else {
+        console.log(`Opener check: ${has('xdg-open') ? 'xdg-open' : 'gio'} found.`);
+    }
+    return ok;
+}
+
 function installLinux() {
+    checkOpenersLinux();
     const unitDir = path.dirname(linuxUnitPath());
     fs.mkdirSync(unitDir, { recursive: true });
     const unit = `\

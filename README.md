@@ -18,6 +18,7 @@ Everything runs on your machine. No accounts, no cloud, no server bill.
 ## Prerequisites
 
 - **Node.js** 20+ (ESM)
+- **Linux** (optional): `xdg-utils` (xdg-open) or `glib2` (gio) — needed for the "Open file/folder" buttons; `npm run service:install` checks for them
 
 ## Setup
 
