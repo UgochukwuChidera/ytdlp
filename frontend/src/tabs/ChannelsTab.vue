@@ -347,13 +347,15 @@ onMounted(() => {
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 13px;
+  box-shadow: var(--shadow-soft);
   cursor: pointer;
-  transition: all 140ms ease;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 .channel-card:hover {
-  border-color: var(--brand);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
 }
 .channel-avatar {
   width: 48px;
@@ -417,14 +419,17 @@ onMounted(() => {
 }
 .video-card {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 13px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 140ms ease;
   background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 .video-card:hover {
-  border-color: var(--brand);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
 }
 .video-card.selected {
   border-color: var(--brand);

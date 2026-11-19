@@ -168,11 +168,11 @@ html.dark .sidebar { background: rgba(15, 20, 28, 0.94); }
 
 .tab-content { flex: 1; }
 .page {
-  width: min(1180px, calc(100vw - var(--sidebar) - 48px));
+  width: min(1180px, calc(100% - 48px));
   margin: 0 auto;
   padding: 34px 0 52px;
 }
-.page-narrow { width: min(820px, calc(100vw - var(--sidebar) - 48px)); }
+.page-narrow { width: min(820px, calc(100% - 48px)); }
 .page-head {
   display: flex;
   align-items: end;
@@ -276,7 +276,7 @@ select {
   padding-right: 34px;
 }
 
-.btn, button:not(.tab-btn):not(.hamburger):not(.dropdown-trigger):not(.dropdown-item) {
+.btn {
   min-height: 40px;
   display: inline-flex;
   align-items: center;
@@ -293,8 +293,8 @@ select {
   transition: transform 120ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
   white-space: nowrap;
 }
-.btn:hover, button:not(.tab-btn):not(.hamburger):not(.dropdown-trigger):not(.dropdown-item):hover { background: var(--surface-3); }
-.btn:active, button:not(.tab-btn):not(.hamburger):not(.dropdown-trigger):not(.dropdown-item):active { transform: translateY(1px); }
+.btn:hover { background: var(--surface-3); }
+.btn:active { transform: translateY(1px); }
 .btn-primary {
   border-color: color-mix(in srgb, var(--brand), black 8%);
   color: white;
@@ -591,17 +591,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--brand-soft), transparen
 .slider-row { display: flex; align-items: center; gap: 12px; }
 input[type="range"] { accent-color: var(--brand); }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; }
-.queue-filter-btn {
-  min-height: 34px !important;
-  border-radius: 999px !important;
-  color: var(--muted) !important;
-  background: var(--surface-2) !important;
-}
-.queue-filter-btn.text-white, .queue-filter-btn.bg-gradient-to-r {
-  color: white !important;
-  border-color: var(--brand) !important;
-  background: var(--brand) !important;
-}
+
 .progress-track, #queueBody .bg-gray-700\/30, #queueBody .bg-gray-200 {
   height: 8px;
   min-width: 110px;
@@ -751,7 +741,7 @@ input[type="range"] { accent-color: var(--brand); }
   padding: 20px !important;
   box-shadow: var(--shadow) !important;
 }
-.format-row:hover { background: var(--brand-soft) !important; }
+
 
 .fa-solid, .fa-brands {
   display: inline-flex;

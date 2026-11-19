@@ -10,27 +10,23 @@
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ open: mobileSidebarOpen, collapsed: sidebarCollapsed }">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <button
+          class="brand-mark brand-toggle"
+          type="button"
+          :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+          :aria-expanded="sidebarCollapsed ? 'false' : 'true'"
+          :data-tooltip="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+          @click="toggleCollapse"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 3v11m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
-        </div>
+        </button>
         <div class="brand-text">
           <div class="brand-title">YT-DLP</div>
           <div class="brand-subtitle">Web Interface</div>
         </div>
-        <button
-          class="collapse-btn"
-          type="button"
-          :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-          :title="sidebarCollapsed ? 'Expand' : 'Collapse'"
-          @click="toggleCollapse"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="m11 17-5-5 5-5m7 10-5-5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
       </div>
 
       <nav class="side-nav" aria-label="Primary">
@@ -40,7 +36,8 @@
           :to="item.path"
           class="tab-btn"
           :class="{ 'tab-active': isActive(item.path) }"
-          :title="item.label"
+          :data-tooltip="item.label"
+          :aria-label="item.label"
           @click="mobileSidebarOpen = false"
         >
           <span class="tab-icon" v-html="item.icon"></span>
@@ -51,7 +48,7 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="tab-btn" type="button" aria-label="Toggle dark mode" @click="toggleDarkMode">
+        <button class="tab-btn" type="button" aria-label="Toggle dark mode" :data-tooltip="isDark ? 'Dark' : 'Light'" @click="toggleDarkMode">
           <span class="tab-icon">
             <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M21 14.5A8 8 0 0 1 9.5 3 9 9 0 1 0 21 14.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -106,6 +103,9 @@ const isDark = ref(true)
 // Desktop sidebar collapse (icon rail), remembered across sessions.
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
 function toggleCollapse() {
+  // The icon rail only exists on desktop; on mobile the logo has no collapse
+  // meaning, so don't flip (and persist) the desktop preference.
+  if (window.matchMedia('(max-width: 860px)').matches) return
   sidebarCollapsed.value = !sidebarCollapsed.value
   localStorage.setItem('sidebarCollapsed', sidebarCollapsed.value ? 'true' : 'false')
 }
@@ -209,17 +209,22 @@ watch(isDark, (val) => {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 60;
-  width: 272px;
+  width: var(--sidebar);
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--surface), transparent 6%);
+  background: color-mix(in srgb, var(--bg), var(--surface) 30%);
   border-right: 1px solid var(--line);
+  box-shadow: 2px 0 0 rgba(255, 255, 255, 0.22);
+}
+html.dark .sidebar {
+  background: color-mix(in srgb, var(--surface), var(--bg) 28%);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 76px;
   padding: 20px 18px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
@@ -231,10 +236,33 @@ watch(isDark, (val) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--brand-soft);
-  border-radius: var(--radius);
-  color: var(--brand);
+  padding: 0;
+  background: var(--accent);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: #241d28;
+  box-shadow: 0 3px 0 var(--line);
   flex-shrink: 0;
+}
+
+/* The download icon doubles as the collapse/expand control. */
+.brand-toggle {
+  position: relative;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+.brand-toggle:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 var(--line);
+}
+.brand-toggle:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 0 var(--line);
+}
+.brand-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--brand-soft), 0 3px 0 var(--line);
 }
 
 .brand-text {
@@ -242,31 +270,10 @@ watch(isDark, (val) => {
   min-width: 0;
 }
 
-.collapse-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 120ms ease;
-}
-.collapse-btn:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.sidebar.collapsed .collapse-btn svg {
-  transform: scaleX(-1);
-}
-
 .brand-title {
-  font-size: 15px;
-  font-weight: 760;
+  font-size: 16px;
+  font-weight: 850;
+  letter-spacing: -0.045em;
   line-height: 1.2;
 }
 
@@ -274,15 +281,16 @@ watch(isDark, (val) => {
   font-size: 11px;
   color: var(--muted);
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .side-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 8px;
+  padding: 14px 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
 }
 
 .tab-btn {
@@ -290,38 +298,45 @@ watch(isDark, (val) => {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
   padding: 9px 11px;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 660;
+  font-weight: 650;
   cursor: pointer;
   text-decoration: none;
-  transition: all 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
   white-space: nowrap;
   width: 100%;
   text-align: left;
 }
 
 .tab-btn:hover {
-  background: var(--surface-2);
+  background: var(--surface);
+  border-color: var(--line-soft);
   color: var(--text);
 }
 
 .tab-btn.tab-active {
-  background: var(--brand-soft);
-  color: var(--brand);
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+  box-shadow: 0 2px 0 var(--line);
 }
 
 .tab-icon {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 8px;
 }
 
 .tab-label {
@@ -345,51 +360,99 @@ watch(isDark, (val) => {
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--brand);
-  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--line);
+  color: #241d28;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 750;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 .nav-dot {
   margin-left: auto;
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  background: var(--amber);
+  background: var(--red);
   flex-shrink: 0;
 }
 
-/* ===== COLLAPSED SIDEBAR (desktop) ===== */
+/* ===== COLLAPSED SIDEBAR (desktop icon rail) ===== */
 .sidebar.collapsed {
-  width: 72px;
+  width: var(--sidebar-collapsed);
 }
 .sidebar.collapsed .brand {
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px 0;
+  flex-direction: row;
+  justify-content: center;
+  gap: 4px;
+  padding: 20px 4px;
 }
 .sidebar.collapsed .brand-text,
-.sidebar.collapsed .tab-label,
-.sidebar.collapsed .nav-badge {
+.sidebar.collapsed .tab-label {
   display: none;
+}
+.sidebar.collapsed .side-nav {
+  padding: 14px 10px;
+  overflow: visible;
 }
 .sidebar.collapsed .tab-btn {
   justify-content: center;
+  gap: 0;
   padding: 10px 0;
 }
-.sidebar.collapsed .tab-btn .nav-dot {
-  position: absolute;
-  margin-left: 0;
-  transform: translateX(14px) translateY(-10px);
+.sidebar.collapsed .tab-icon {
+  width: 28px;
+  height: 28px;
 }
-.sidebar.collapsed .side-nav {
-  padding: 10px 12px;
+.sidebar.collapsed .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin: 0;
+  font-size: 9px;
+}
+.sidebar.collapsed .nav-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  margin: 0;
 }
 .sidebar.collapsed .sidebar-footer .tab-btn {
   justify-content: center;
   padding: 10px 0;
+}
+
+/* Icon-rail tooltips replace native title tooltips. */
+.sidebar.collapsed .tab-btn[data-tooltip]::after,
+.sidebar.collapsed .brand-toggle[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  z-index: 200;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--surface);
+  box-shadow: var(--shadow-soft);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.sidebar.collapsed .tab-btn[data-tooltip]:hover::after,
+.sidebar.collapsed .tab-btn[data-tooltip]:focus-visible::after,
+.sidebar.collapsed .brand-toggle[data-tooltip]:hover::after,
+.sidebar.collapsed .brand-toggle[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
 }
 
 /* ===== SIDEBAR OVERLAY (mobile) ===== */
@@ -407,13 +470,13 @@ watch(isDark, (val) => {
 
 /* ===== MAIN CONTENT ===== */
 .main-content {
-  margin-left: 272px;
+  margin-left: var(--sidebar);
   flex: 1;
   min-width: 0;
   transition: margin-left 0.18s ease;
 }
 .main-content.collapsed {
-  margin-left: 72px;
+  margin-left: var(--sidebar-collapsed);
 }
 
 /* ===== MOBILE TOPBAR ===== */
@@ -427,13 +490,41 @@ watch(isDark, (val) => {
 }
 
 /* ===== RESPONSIVE ===== */
-@media (max-width: 768px) {
+@media (max-width: 860px) {
   .sidebar {
     transform: translateX(-100%);
     width: 272px !important;
   }
   .sidebar.open {
     transform: translateX(0);
+  }
+  .sidebar.collapsed .brand {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 20px 18px;
+  }
+  .sidebar.collapsed .brand-text,
+  .sidebar.collapsed .tab-label {
+    display: revert;
+  }
+  .sidebar.collapsed .tab-btn {
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 9px 11px;
+  }
+  .sidebar.collapsed .tab-icon {
+    width: 24px;
+    height: 24px;
+  }
+  .sidebar.collapsed .nav-badge,
+  .sidebar.collapsed .nav-dot {
+    position: static;
+    margin-left: auto;
+  }
+  .sidebar.collapsed .tab-btn[data-tooltip]::after,
+  .sidebar.collapsed .brand-toggle[data-tooltip]::after {
+    display: none;
   }
   .main-content {
     margin-left: 0 !important;

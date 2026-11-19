@@ -60,9 +60,7 @@
           <label class="concurrency-label" for="concurrency-select">Parallel downloads</label>
           <span class="concurrency-hint">How many yt-dlp jobs can run at the same time.</span>
         </div>
-        <select id="concurrency-select" :value="concurrency" @change="setConcurrency($event)">
-          <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
-        </select>
+        <BaseSelect id="concurrency-select" :model-value="concurrency" :options="concurrencyOptions" aria-label="Parallel downloads" @change="setConcurrency" />
       </div>
 
       <!-- Output defaults -->
@@ -71,25 +69,14 @@
           <label class="concurrency-label" for="video-default">Default video container</label>
           <span class="concurrency-hint">Used unless a download picks its own. Auto lets yt-dlp choose.</span>
         </div>
-        <select id="video-default" :value="outputDefaults.videoFormat" @change="setOutputDefault('videoFormat', $event)">
-          <option value="auto">Auto</option>
-          <option value="mp4">mp4</option>
-          <option value="webm">webm</option>
-          <option value="mkv">mkv</option>
-        </select>
+        <BaseSelect id="video-default" :model-value="outputDefaults.videoFormat" :options="videoFormatOptions" aria-label="Default video container" @change="v => setOutputDefault('videoFormat', v)" />
       </div>
       <div class="concurrency-row">
         <div>
           <label class="concurrency-label" for="audio-default">Default audio format</label>
           <span class="concurrency-hint">Used for audio-only downloads. m4a avoids re-encoding.</span>
         </div>
-        <select id="audio-default" :value="outputDefaults.audioFormat" @change="setOutputDefault('audioFormat', $event)">
-          <option value="m4a">m4a</option>
-          <option value="mp3">mp3</option>
-          <option value="opus">opus</option>
-          <option value="flac">flac</option>
-          <option value="wav">wav</option>
-        </select>
+        <BaseSelect id="audio-default" :model-value="outputDefaults.audioFormat" :options="audioDefaultOptions" aria-label="Default audio format" @change="v => setOutputDefault('audioFormat', v)" />
       </div>
 
       <div v-if="showProgress" class="setup-progress">
@@ -142,13 +129,26 @@
 
       <div v-else>
         <div v-for="(cat, catIdx) in categories" :key="cat.key" class="category-section">
-          <div class="category-header" @click="toggleCategory(cat.key)">
-            <span class="category-chevron" :class="{ expanded: expandedCategories.has(cat.key) }">▶</span>
+          <button
+            :id="'category-btn-' + cat.key"
+            type="button"
+            class="category-header"
+            :aria-expanded="expandedCategories.has(cat.key) ? 'true' : 'false'"
+            :aria-controls="'category-body-' + cat.key"
+            @click="toggleCategory(cat.key)"
+          >
+            <span class="category-chevron" :class="{ expanded: expandedCategories.has(cat.key) }" aria-hidden="true">▶</span>
             <span class="category-label">{{ cat.label }}</span>
             <span class="option-count">{{ cat.options.length }}</span>
-          </div>
+          </button>
 
-          <div v-if="expandedCategories.has(cat.key)" class="category-body">
+          <div
+            v-if="expandedCategories.has(cat.key)"
+            :id="'category-body-' + cat.key"
+            class="category-body"
+            role="region"
+            :aria-labelledby="'category-btn-' + cat.key"
+          >
             <div v-for="opt in cat.options" :key="opt.flag" class="option-row">
               <div class="option-label">
                 <label :for="inputId(opt)">{{ opt.label || opt.flag }}</label>
@@ -173,15 +173,14 @@
                   :value="optionValues[opt.flag] || ''"
                   @change="setOption(opt.flag, $event.target.value || undefined)"
                 >
-                <select
+                <BaseSelect
                   v-else-if="opt.type === 'choice'"
                   :id="inputId(opt)"
-                  :value="optionValues[opt.flag] || ''"
-                  @change="setOption(opt.flag, $event.target.value || undefined)"
-                >
-                  <option value="">Default</option>
-                  <option v-for="c in opt.choices" :key="c" :value="c">{{ c }}</option>
-                </select>
+                  :model-value="optionValues[opt.flag] || ''"
+                  :options="choiceOptions(opt)"
+                  :aria-label="opt.label || opt.flag"
+                  @change="v => setOption(opt.flag, v || undefined)"
+                />
                 <input
                   v-else
                   type="text"
@@ -207,8 +206,27 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useDialog } from '../composables/useDialog'
+import BaseSelect from '../components/BaseSelect.vue'
 
 const { confirmDialog } = useDialog()
+
+const concurrencyOptions = Array.from({ length: 10 }, (_, i) => ({
+  value: i + 1,
+  label: String(i + 1),
+}))
+const videoFormatOptions = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'mp4', label: 'mp4' },
+  { value: 'webm', label: 'webm' },
+  { value: 'mkv', label: 'mkv' },
+]
+const audioDefaultOptions = [
+  { value: 'm4a', label: 'm4a' },
+  { value: 'mp3', label: 'mp3' },
+  { value: 'opus', label: 'opus' },
+  { value: 'flac', label: 'flac' },
+  { value: 'wav', label: 'wav' },
+]
 
 // ══════════════ SYSTEM (binaries + concurrency) ══════════════
 const binaries = ref([
@@ -288,8 +306,8 @@ async function fetchConcurrency() {
   }
 }
 
-async function setConcurrency(event) {
-  const n = Number(event.target.value)
+async function setConcurrency(value) {
+  const n = Number(value)
   if (!Number.isFinite(n)) return
   const prev = concurrency.value
   concurrency.value = n
@@ -321,8 +339,7 @@ async function fetchOutputDefaults() {
   }
 }
 
-async function setOutputDefault(key, event) {
-  const value = event.target.value
+async function setOutputDefault(key, value) {
   const prev = { ...outputDefaults.value }
   outputDefaults.value = { ...prev, [key]: value }
   try {
@@ -490,6 +507,13 @@ function inputId(opt) {
   return 'opt-' + opt.flag
 }
 
+function choiceOptions(opt) {
+  return [
+    { value: '', label: 'Default' },
+    ...(opt.choices || []).map(c => ({ value: c, label: c })),
+  ]
+}
+
 function toggleCategory(key) {
   if (expandedCategories.has(key)) {
     expandedCategories.delete(key)
@@ -637,7 +661,7 @@ onUnmounted(() => {
 }
 .binary-latest {
   font-size: 11px;
-  color: var(--muted-dim);
+  color: var(--faint);
   font-family: monospace;
 }
 .binary-status {
@@ -650,7 +674,7 @@ onUnmounted(() => {
 }
 .btn-placeholder {
   font-size: 11px;
-  color: var(--muted-dim);
+  color: var(--faint);
 }
 
 .tag {
@@ -665,6 +689,7 @@ onUnmounted(() => {
 .tag-red { background: var(--red-soft); color: var(--red); }
 .tag-brand { background: var(--brand-soft); color: var(--brand); }
 .tag-muted { background: var(--surface-3); color: var(--muted); }
+.binary-latest, .btn-placeholder { color: var(--faint); }
 
 .btn-sm {
   min-height: 30px;
@@ -702,14 +727,10 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--muted);
 }
-.concurrency-row select {
-  min-width: 70px;
-  padding: 7px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
+.concurrency-row :deep(.select) {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 96px;
 }
 
 /* ── Setup progress ── */
@@ -726,7 +747,7 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 10px 16px;
   margin: 12px 0;
-  background: var(--surface-soft);
+  background: var(--surface-2);
   border-radius: var(--radius);
   font-size: 13px;
 }
@@ -759,22 +780,24 @@ onUnmounted(() => {
   flex: 1;
 }
 .option-input input[type="text"],
-.option-input input[type="number"],
-.option-input select {
+.option-input input[type="number"] {
   width: 100%;
-  padding: 8px 12px;
+  min-height: 42px;
+  padding: 9px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   font-size: 13px;
 }
 .option-input input[type="text"]:focus,
-.option-input input[type="number"]:focus,
-.option-input select:focus {
+.option-input input[type="number"]:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 2px var(--brand-soft);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.option-input :deep(.select) {
+  width: 100%;
 }
 .checkbox-wrap {
   display: flex;
@@ -826,22 +849,36 @@ onUnmounted(() => {
   margin-bottom: 0;
 }
 .category-header {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 0;
+  padding: 12px 14px;
+  margin: 4px 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
   cursor: pointer;
   user-select: none;
-  font-weight: 660;
+  font-weight: 800;
   font-size: 14px;
+  text-align: left;
+  transition: background 140ms ease, border-color 140ms ease;
 }
 .category-header:hover {
-  opacity: 0.8;
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand), transparent 72%);
+}
+.category-header:focus-visible {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 .category-chevron {
   font-size: 10px;
   transition: transform 0.2s ease;
-  color: var(--muted);
+  color: var(--brand);
 }
 .category-chevron.expanded {
   transform: rotate(90deg);
@@ -852,7 +889,7 @@ onUnmounted(() => {
 .option-count {
   font-size: 11px;
   color: var(--muted);
-  background: var(--surface-soft);
+  background: var(--surface-2);
   padding: 2px 8px;
   border-radius: 10px;
   line-height: 1.4;
@@ -868,7 +905,7 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 .os-all {
-  background: var(--surface-soft);
+  background: var(--surface-2);
   color: var(--muted);
 }
 .os-linux {

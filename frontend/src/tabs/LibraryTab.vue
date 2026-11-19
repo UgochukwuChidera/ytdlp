@@ -100,7 +100,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="job in filteredJobs" :key="job.id || job.url">
+            <tr v-for="job in pagedJobs" :key="job.id || job.url">
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium max-w-xs truncate" :title="job.title || job.filename || job.url">
                 {{ job.title || job.filename || job.url }}
               </td>
@@ -169,6 +169,14 @@
           </tbody>
         </table>
       </div>
+      <div v-if="filteredJobs.length > jobsPerPage" class="pagination">
+        <span class="pagination-info">Showing {{ jobRange.start }}–{{ jobRange.end }} of {{ filteredJobs.length }}</span>
+        <div class="pagination-controls">
+          <button class="btn btn-xs" type="button" :disabled="jobPage <= 1" @click="jobPage--">Prev</button>
+          <span class="pagination-page">Page {{ jobPage }} / {{ jobPageCount }}</span>
+          <button class="btn btn-xs" type="button" :disabled="jobPage >= jobPageCount" @click="jobPage++">Next</button>
+        </div>
+      </div>
     </section>
 
     <!-- ============ READY (files on disk) ============ -->
@@ -178,12 +186,24 @@
           <path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
         </svg>
         <h2 style="margin:0">Downloaded Files</h2>
-        <button class="btn btn-quiet" type="button" style="margin-left:auto" title="Open downloads folder" @click="openDownloadsFolder">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
-        </button>
+        <div class="ready-actions">
+          <button class="btn btn-quiet" type="button" :disabled="filesLoading" title="Refresh downloaded files" @click="fetchFiles">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{ spinning: filesLoading }"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+          </button>
+          <button class="btn btn-quiet" type="button" title="Open downloads folder" @click="openDownloadsFolder">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="field" style="margin-bottom:16px">
-        <input type="text" v-model="search" placeholder="Search downloaded files..." autocomplete="off" style="width:100%">
+      <div class="files-toolbar">
+        <input type="text" v-model="search" placeholder="Search downloaded files..." autocomplete="off" class="files-search">
+        <BaseSelect
+          id="files-per-page"
+          :model-value="filesPerPage"
+          :options="perPageOptions"
+          aria-label="Files per page"
+          @change="value => { filesPerPage = Number(value); filePage = 1 }"
+        />
       </div>
       <div class="table-wrap">
         <table>
@@ -196,7 +216,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="file in filteredFiles" :key="file.name">
+            <tr v-for="file in pagedFiles" :key="file.name">
               <td>{{ file.name }}</td>
               <td>{{ formatSize(file.size) }}</td>
               <td>{{ formatDate(file.created) }}</td>
@@ -223,9 +243,21 @@
           </tbody>
         </table>
       </div>
+      <div v-if="filteredFiles.length > filesPerPage" class="pagination">
+        <span class="pagination-info">Showing {{ fileRange.start }}–{{ fileRange.end }} of {{ filteredFiles.length }}</span>
+        <div class="pagination-controls">
+          <button class="btn btn-xs" type="button" :disabled="filePage <= 1" @click="filePage--">Prev</button>
+          <span class="pagination-page">Page {{ filePage }} / {{ filePageCount }}</span>
+          <button class="btn btn-xs" type="button" :disabled="filePage >= filePageCount" @click="filePage++">Next</button>
+        </div>
+      </div>
       <div v-if="filesError" class="empty-state">
         <p class="empty-title">Failed to load files</p>
         <p class="empty-copy">{{ filesError }}</p>
+      </div>
+      <div v-else-if="filesLoading && filteredFiles.length === 0" class="loading-state">
+        <div class="loader"></div>
+        <p>Loading files...</p>
       </div>
       <div v-else-if="filteredFiles.length === 0" class="empty-state">
         <div class="empty-icon">
@@ -239,17 +271,30 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useDialog } from '../composables/useDialog'
+import { useLibrary } from '../composables/useLibrary'
+import BaseSelect from '../components/BaseSelect.vue'
 
 const { confirmDialog } = useDialog()
+const {
+  jobs,
+  files,
+  queueLoading,
+  filesLoading,
+  filesError,
+  start,
+  stop,
+  refreshAll,
+  fetchFiles,
+  patchFiles,
+} = useLibrary()
 
 // ── Shared view state ──
 const view = ref('active')
 
 // ══════════════ QUEUE (Active) ══════════════
-const jobs = ref([])
-const loading = ref(true)
+const loading = computed(() => queueLoading.value && jobs.value.length === 0)
 const activeFilter = ref('all')
 
 const statusFilters = [
@@ -270,73 +315,24 @@ const activeCount = computed(() =>
   jobs.value.filter(j => ['queued', 'downloading', 'paused'].includes(j.status || 'queued')).length
 )
 
-// SSE connection
-let eventSource = null
-
-function connectSSE() {
-  if (eventSource) {
-    eventSource.close()
-    eventSource = null
-  }
-
-  eventSource = new EventSource('/api/download/queue/events')
-
-  eventSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
-
-      // SSE sends { type: 'init', jobs: [...] } on connect
-      if (data.type === 'init' && Array.isArray(data.jobs)) {
-        jobs.value = data.jobs
-        loading.value = false
-        return
-      }
-
-      // SSE sends { type: 'update', job: {...} } on progress/status change
-      if (data.type === 'update' && data.job) {
-        const jobId = data.job.id || data.job._id
-        const idx = jobs.value.findIndex(j => (j.id || j._id) === jobId)
-        // The server deletes the job before emitting status 'removed' —
-        // splicing keeps deleted rows from re-materializing as phantoms.
-        if (data.job.status === 'removed') {
-          if (idx >= 0) {
-            jobs.value.splice(idx, 1)
-            jobs.value = [...jobs.value]
-          }
-          return
-        }
-        if (idx >= 0) {
-          jobs.value[idx] = { ...jobs.value[idx], ...data.job }
-          // Trigger reactivity by replacing the array
-          jobs.value = [...jobs.value]
-        } else {
-          jobs.value.push(data.job)
-        }
-        return
-      }
-
-      // Fallback: raw array
-      if (Array.isArray(data)) {
-        jobs.value = data
-        loading.value = false
-        return
-      }
-
-      // Fallback: { jobs: [...] }
-      if (Array.isArray(data.jobs)) {
-        jobs.value = data.jobs
-        loading.value = false
-        return
-      }
-    } catch (e) {
-      console.error('SSE parse error:', e)
-    }
-  }
-
-  eventSource.onerror = () => {
-    // Browser EventSource will auto-reconnect
-  }
-}
+// ── Jobs pagination ──
+const jobsPerPage = 8
+const jobPage = ref(1)
+const jobPageCount = computed(() =>
+  Math.max(1, Math.ceil(filteredJobs.value.length / jobsPerPage))
+)
+const pagedJobs = computed(() => {
+  const startIdx = (jobPage.value - 1) * jobsPerPage
+  return filteredJobs.value.slice(startIdx, startIdx + jobsPerPage)
+})
+const jobRange = computed(() => {
+  if (filteredJobs.value.length === 0) return { start: 0, end: 0 }
+  const start = (jobPage.value - 1) * jobsPerPage + 1
+  return { start, end: Math.min(start + jobsPerPage - 1, filteredJobs.value.length) }
+})
+watch(jobPageCount, (count) => {
+  if (jobPage.value > count) jobPage.value = count
+})
 
 // Progress helpers
 function progressWidth(job) {
@@ -361,21 +357,6 @@ function progressClass(job) {
 
 // API calls
 const apiBase = ''
-
-async function fetchQueue() {
-  try {
-    const res = await fetch(apiBase + '/api/download/queue')
-    if (res.ok) {
-      const data = await res.json()
-      // Backend returns { jobs: [...] }
-      jobs.value = Array.isArray(data.jobs) ? data.jobs : []
-    }
-  } catch (e) {
-    console.error('Queue fetch error:', e)
-  } finally {
-    loading.value = false
-  }
-}
 
 // --- Bulk actions ---
 async function startAllJobs() {
@@ -510,15 +491,35 @@ async function copyError(job) {
 }
 
 // ══════════════ FILES (Ready) ══════════════
-const files = ref([])
 const openDropdown = ref(null)
 const search = ref('')
-const filesError = ref('')
+const filesPerPage = ref(10)
+const filePage = ref(1)
+const perPageOptions = [10, 25, 50, 100].map(n => ({ value: n, label: `${n} per page` }))
 
 const filteredFiles = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return files.value
   return files.value.filter(f => f.name.toLowerCase().includes(q))
+})
+
+const filePageCount = computed(() =>
+  Math.max(1, Math.ceil(filteredFiles.value.length / filesPerPage.value))
+)
+const pagedFiles = computed(() => {
+  const startIdx = (filePage.value - 1) * filesPerPage.value
+  return filteredFiles.value.slice(startIdx, startIdx + filesPerPage.value)
+})
+const fileRange = computed(() => {
+  if (filteredFiles.value.length === 0) return { start: 0, end: 0 }
+  const start = (filePage.value - 1) * filesPerPage.value + 1
+  return { start, end: Math.min(start + filesPerPage.value - 1, filteredFiles.value.length) }
+})
+
+watch(search, () => { filePage.value = 1 })
+watch(filesPerPage, () => { filePage.value = 1 })
+watch(filePageCount, (count) => {
+  if (filePage.value > count) filePage.value = count
 })
 
 function formatSize(bytes) {
@@ -571,7 +572,7 @@ async function deleteFile(name) {
   try {
     const res = await fetch(`/api/files/${encodeURIComponent(name)}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Failed to delete file')
-    files.value = files.value.filter(f => f.name !== name)
+    patchFiles(current => current.filter(f => f.name !== name))
   } catch (e) {
     console.error('Delete error:', e)
   }
@@ -584,34 +585,29 @@ function handleClickOutside(e) {
   }
 }
 
-async function fetchFiles() {
-  try {
-    const response = await fetch('/api/files')
-    if (response.ok) {
-      const data = await response.json()
-      files.value = Array.isArray(data) ? data : []
-    } else {
-      filesError.value = `Server returned ${response.status}`
-    }
-  } catch (e) {
-    filesError.value = e.message
-  }
+function handleFocus() {
+  if (document.visibilityState === 'visible') refreshAll()
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') refreshAll()
 }
 
 // ══════════════ Lifecycle ══════════════
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  await fetchQueue()
-  connectSSE()
-  fetchFiles()
+  window.addEventListener('focus', handleFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  // Cache paints instantly; start() revalidates queue and files in the
+  // background and keeps the file list in sync while downloads finish.
+  start()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
-  if (eventSource) {
-    eventSource.close()
-    eventSource = null
-  }
+  window.removeEventListener('focus', handleFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  stop()
 })
 </script>
 
@@ -621,107 +617,119 @@ onUnmounted(() => {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  background: var(--surface-2);
+  margin-bottom: 18px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  margin-bottom: 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface), var(--brand-soft) 45%);
+  box-shadow: 0 2px 0 var(--line);
 }
 .lib-segment {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 16px;
-  border: none;
-  border-radius: 7px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 660;
+  font-weight: 750;
   cursor: pointer;
-  transition: all 140ms ease;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 .lib-segment:hover {
   color: var(--text);
 }
 .lib-segment.active {
-  background: var(--brand-soft);
-  color: var(--brand);
+  color: #241d28;
+  background: var(--accent);
+  border-color: var(--line);
+  box-shadow: 0 2px 0 var(--line);
 }
 .lib-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
+  min-width: 21px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--muted);
+  border-radius: 6px;
+  background: rgba(36, 29, 40, 0.09);
+  color: inherit;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 .lib-segment.active .lib-count {
-  background: var(--brand);
-  color: #fff;
+  background: rgba(36, 29, 40, 0.16);
 }
 
 /* ── Filter bar ── */
 .filter-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .queue-filter-btn {
-  padding: 5px 13px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-2);
+  min-height: 32px;
+  padding: 7px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 660;
+  font-size: 11px;
+  font-weight: 750;
   cursor: pointer;
-  transition: all 140ms ease;
-  min-height: 30px;
   line-height: 1;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 .queue-filter-btn:hover {
   border-color: var(--brand);
   color: var(--text);
 }
 .queue-filter-btn.active {
-  background: var(--brand-soft);
-  color: var(--brand);
-  border-color: var(--brand);
+  color: #241d28;
+  border-color: var(--line);
+  background: var(--accent);
 }
 
 /* ── Status badges ── */
 .status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 800;
+  line-height: 1.2;
   text-transform: capitalize;
   letter-spacing: 0.02em;
 }
 .status-badge.queued {
-  background: var(--amber-soft);
-  color: var(--amber);
+  background: var(--surface-3);
+  color: var(--muted);
 }
 .status-badge.downloading {
-  background: var(--blue-soft);
-  color: var(--blue);
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand), transparent 78%);
 }
 .status-badge.completed {
   background: var(--green-soft);
   color: var(--green);
+  border-color: color-mix(in srgb, var(--green), transparent 78%);
 }
 .status-badge.failed {
   background: var(--red-soft);
   color: var(--red);
+  border-color: color-mix(in srgb, var(--red), transparent 78%);
 }
 .status-badge.paused {
   background: var(--amber-soft);
   color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber), transparent 78%);
 }
 
 /* ── Progress bar ── */
@@ -825,8 +833,73 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
+/* ── Files toolbar & pagination ── */
+.ready-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.files-search {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+.files-toolbar :deep(.select) {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 140px;
+}
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.pagination-info {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pagination-page {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.spinning {
+  animation: lib-spin 0.9s linear infinite;
+}
+
 /* ── Responsive tweaks ── */
 @media (max-width: 860px) {
+  .lib-segmented {
+    display: flex;
+    width: 100%;
+  }
+  .lib-segment {
+    flex: 1;
+    justify-content: center;
+  }
+  .files-toolbar {
+    flex-wrap: wrap;
+  }
+  .files-toolbar :deep(.select) {
+    width: 100%;
+  }
   .actions-cell {
     flex-direction: column;
     align-items: flex-end;

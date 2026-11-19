@@ -29,39 +29,17 @@
         </button>
       </div>
       <div class="format-row">
-        <label>Quality</label>
-        <select v-model="formatType">
-          <option value="best">best</option>
-          <option value="2160p">2160p (4K)</option>
-          <option value="1440p">1440p</option>
-          <option value="1080p">1080p</option>
-          <option value="720p">720p</option>
-          <option value="480p">480p</option>
-          <option value="360p">360p</option>
-          <option value="bestvideo+bestaudio">bestvideo+bestaudio</option>
-          <option value="bestaudio">bestaudio (audio only)</option>
-          <option value="custom">custom</option>
-        </select>
+        <label for="quality-select">Quality</label>
+        <BaseSelect id="quality-select" v-model="formatType" :options="qualityOptions" aria-label="Quality" />
       </div>
       <div v-if="advancedOpen">
         <div class="format-row">
-          <label>Container</label>
-          <select v-model="container">
-            <option value="">Auto</option>
-            <option value="mp4">mp4</option>
-            <option value="webm">webm</option>
-            <option value="mkv">mkv</option>
-          </select>
+          <label for="container-select">Container</label>
+          <BaseSelect id="container-select" v-model="container" :options="containerOptions" aria-label="Container" />
         </div>
         <div class="format-row" v-if="formatType === 'bestaudio'">
-          <label>Audio format</label>
-          <select v-model="audioFormat">
-            <option value="mp3">mp3</option>
-            <option value="m4a">m4a</option>
-            <option value="opus">opus</option>
-            <option value="flac">flac</option>
-            <option value="wav">wav</option>
-          </select>
+          <label for="audio-format-select">Audio format</label>
+          <BaseSelect id="audio-format-select" v-model="audioFormat" :options="audioFormatOptions" aria-label="Audio format" />
         </div>
         <div class="format-row" v-if="formatType === 'custom'">
           <label>Custom format</label>
@@ -170,8 +148,35 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from '../composables/useToast'
+import BaseSelect from '../components/BaseSelect.vue'
 
 const { showToast } = useToast()
+
+const qualityOptions = [
+  { value: 'best', label: 'best' },
+  { value: '2160p', label: '2160p (4K)' },
+  { value: '1440p', label: '1440p' },
+  { value: '1080p', label: '1080p' },
+  { value: '720p', label: '720p' },
+  { value: '480p', label: '480p' },
+  { value: '360p', label: '360p' },
+  { value: 'bestvideo+bestaudio', label: 'bestvideo+bestaudio' },
+  { value: 'bestaudio', label: 'bestaudio (audio only)' },
+  { value: 'custom', label: 'custom' },
+]
+const containerOptions = [
+  { value: '', label: 'Auto' },
+  { value: 'mp4', label: 'mp4' },
+  { value: 'webm', label: 'webm' },
+  { value: 'mkv', label: 'mkv' },
+]
+const audioFormatOptions = [
+  { value: 'mp3', label: 'mp3' },
+  { value: 'm4a', label: 'm4a' },
+  { value: 'opus', label: 'opus' },
+  { value: 'flac', label: 'flac' },
+  { value: 'wav', label: 'wav' },
+]
 
 const url = ref('')
 const results = ref([])
@@ -411,13 +416,16 @@ function formatCodec(fmt) {
 }
 .video-card {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 13px;
   overflow: hidden;
-  transition: all 140ms ease;
   background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 .video-card:hover {
-  border-color: var(--brand);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
 }
 .video-card-thumb {
   position: relative;
@@ -458,7 +466,8 @@ function formatCodec(fmt) {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
 }
 .quality-badge {
   position: absolute;
@@ -497,22 +506,41 @@ function formatCodec(fmt) {
   font-weight: 660;
   color: var(--text);
 }
-.format-row input[type="text"],
-.format-row select {
+.format-row input[type="text"] {
   flex: 1;
   max-width: 400px;
-  padding: 8px 12px;
+  min-height: 42px;
+  padding: 9px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   font-size: 13px;
 }
-.format-row input[type="text"]:focus,
-.format-row select:focus {
+.format-row input[type="text"]:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 2px var(--brand-soft);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.format-row :deep(.select) {
+  flex: 1;
+  max-width: 400px;
+}
+
+@media (max-width: 860px) {
+  .format-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .format-row label {
+    width: auto;
+  }
+  .format-row input[type="text"],
+  .format-row :deep(.select) {
+    max-width: none;
+    width: 100%;
+  }
 }
 
 /* Modal overlay */
