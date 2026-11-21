@@ -68,6 +68,13 @@ export function sanitizeOutputTemplate(tpl) {
     return tpl;
 }
 
+export function sanitizeFormatSelector(selector) {
+    if (typeof selector !== 'string') return null;
+    const value = selector.trim();
+    if (!value || value.startsWith('-') || /\s/.test(value)) return null;
+    return value;
+}
+
 export function isDangerousFlag(flag) {
     if (typeof flag !== 'string') return true;
     if (flag === '--') return true;
@@ -108,10 +115,12 @@ export function buildQualityArgs({ format, quality, audioOnly, audioFormat, audi
     const args = ['--no-warnings', '--ffmpeg-location', binDir, '-P', downloadsDir];
     const tpl = sanitizeOutputTemplate(outputTemplate) || DEFAULT_OUTPUT_TEMPLATE;
     const container = ALLOWED_FORMATS.includes(format) ? format : null;
+    const explicitFormat = sanitizeFormatSelector(formatSelector);
 
-    if (typeof formatSelector === 'string' && formatSelector.trim()) {
+    if (explicitFormat) {
         // An explicitly chosen yt-dlp format wins over every preset.
-        args.push('-f', formatSelector.trim());
+        args.push(...extraArgs);
+        args.push('-f', explicitFormat);
     } else if (audioOnly) {
         args.push('--extract-audio');
         args.push('--audio-format', ALLOWED_AUDIO_FORMATS.includes(audioFormat) ? audioFormat : 'mp3');
@@ -143,7 +152,7 @@ export function buildQualityArgs({ format, quality, audioOnly, audioFormat, audi
         args.push('-f', 'best');
     }
     args.push('-o', tpl);
-    args.push(...extraArgs);
+    if (!explicitFormat) args.push(...extraArgs);
     return args;
 }
 
