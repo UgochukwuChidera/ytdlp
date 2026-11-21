@@ -286,7 +286,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useToast } from '../composables/useToast'
 import BaseSelect from '../components/BaseSelect.vue'
 import BaseTooltip from '../components/BaseTooltip.vue'
@@ -338,6 +338,7 @@ const audioFormat = ref('m4a')
 // An individual format picked from List Formats overrides the presets. It is
 // an explicit advanced action, never a competing entry in the quality menu.
 const formatOverride = ref('')
+const formatOverrideMeta = ref(null)
 const outputTemplate = ref('')
 const showAdvanced = ref(false)
 const fetchingFormats = ref(false)
@@ -467,12 +468,6 @@ function isSelectedFormat(fmt) {
     String(fmt.format_id) === String(formatOverrideMeta.value.format_id)
 }
 
-const formatOverrideMeta = computed(() => {
-  if (!formatOverride.value) return null
-  const id = String(formatOverride.value).split('+')[0]
-  return formatList.value.find((fmt) => String(fmt.format_id) === id) || null
-})
-
 const formatOverrideIncludesAudio = computed(() => {
   return formatOverride.value.includes('+bestaudio')
 })
@@ -492,7 +487,16 @@ function setOutputMode(mode) {
   // A specific format belongs to the mode it was picked for; drop it rather
   // than submit a stale, incompatible selector after a mode switch.
   formatOverride.value = ''
+  formatOverrideMeta.value = null
 }
+
+watch(url, () => {
+  // A format ID belongs to the URL from which it was listed.
+  formatOverride.value = ''
+  formatOverrideMeta.value = null
+  formatList.value = []
+  formatError.value = ''
+})
 
 // Seed the per-download controls from the saved defaults; the user can still
 // override them for an individual job.
@@ -585,6 +589,7 @@ function closeFormatModal() {
 
 function selectFormat(fmt, withAudio = false) {
   formatOverride.value = withAudio ? `${fmt.format_id}+bestaudio` : String(fmt.format_id)
+  formatOverrideMeta.value = { ...fmt }
   showAdvanced.value = true
   showFormatModal.value = false
   showToast(
@@ -597,15 +602,17 @@ function selectFormat(fmt, withAudio = false) {
 
 function clearFormatOverride() {
   formatOverride.value = ''
+  formatOverrideMeta.value = null
 }
 
 async function queueVideo(video) {
   const body = {
     url: video.url || video.webpage_url,
     outputTemplate: outputTemplate.value.trim() || undefined,
+    formatSelector: formatOverride.value || undefined,
   }
   if (formatOverride.value) {
-    body.formatSelector = formatOverride.value
+    // The explicit picker selection is the only format choice for this job.
   } else if (outputMode.value === 'audio') {
     body.audioOnly = true
     body.audioFormat = audioFormat.value

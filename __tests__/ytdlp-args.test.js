@@ -208,4 +208,22 @@ describe('buildQualityArgs', () => {
     expect(args).not.toContain('--extract-audio');
     expect(args).not.toContain('--merge-output-format');
   });
+
+  it('places an explicit picker selection after extra format arguments', () => {
+    const args = buildQualityArgs(
+      { format: 'mp4', quality: '1080p', formatSelector: '137+bestaudio' },
+      { ...ctx, extraArgs: ['-f', 'worst'] },
+    );
+    const selectors = args.filter((arg, i) => args[i - 1] === '-f');
+    expect(selectors).toEqual(['worst', '137+bestaudio']);
+  });
+
+  it('rejects malformed format selectors', () => {
+    const args = buildQualityArgs(
+      { quality: '1080p', formatSelector: '--exec=evil' },
+      ctx,
+    );
+    expect(args).not.toContain('--exec=evil');
+    expect(args).toContain('bestvideo[height<=1080]+bestaudio/best[height<=1080]');
+  });
 });
