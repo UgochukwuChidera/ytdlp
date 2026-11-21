@@ -383,7 +383,12 @@ async function executeJob(job) {
             // Depending on flags, yt-dlp emits "[download] x%" progress lines
             // on stdout (measured empirically with --print + --no-simulate)
             // or stderr — so watch both.
-            const expectedFiles = job.options.audioOnly ? 1 : 2;
+            // A single explicit format (or audio extraction) produces one file;
+            // a "+" selector downloads and merges two.
+            const singleFormat = typeof job.options.formatSelector === 'string' &&
+                job.options.formatSelector.trim() &&
+                !job.options.formatSelector.includes('+');
+            const expectedFiles = job.options.audioOnly || singleFormat ? 1 : 2;
             job.expectedFiles = expectedFiles;
             job.fileIndex = 1;
             const trackProgress = createProgressTracker(job, expectedFiles);

@@ -47,6 +47,8 @@ const DANGEROUS_SHORTS = ['-o', '-P'];
 
 export const ALLOWED_FORMATS = ['mp4', 'webm', 'mkv'];
 export const ALLOWED_AUDIO_FORMATS = ['mp3', 'm4a', 'opus', 'flac', 'wav'];
+// yt-dlp accepts 0 (best) through 10 (worst), or an explicit bitrate.
+export const ALLOWED_AUDIO_QUALITIES = ['0', '128K', '192K', '256K', '320K'];
 const DEFAULT_OUTPUT_TEMPLATE = '%(title)s.%(ext)s';
 
 export function isValidVideoUrl(url) {
@@ -102,14 +104,20 @@ export function filterExtraArgs(extraArgs) {
     return filtered;
 }
 
-export function buildQualityArgs({ format, quality, audioOnly, audioFormat, outputTemplate }, { binDir, downloadsDir, extraArgs = [] }) {
+export function buildQualityArgs({ format, quality, audioOnly, audioFormat, audioQuality, formatSelector, outputTemplate }, { binDir, downloadsDir, extraArgs = [] }) {
     const args = ['--no-warnings', '--ffmpeg-location', binDir, '-P', downloadsDir];
     const tpl = sanitizeOutputTemplate(outputTemplate) || DEFAULT_OUTPUT_TEMPLATE;
     const container = ALLOWED_FORMATS.includes(format) ? format : null;
 
-    if (audioOnly) {
+    if (typeof formatSelector === 'string' && formatSelector.trim()) {
+        // An explicitly chosen yt-dlp format wins over every preset.
+        args.push('-f', formatSelector.trim());
+    } else if (audioOnly) {
         args.push('--extract-audio');
         args.push('--audio-format', ALLOWED_AUDIO_FORMATS.includes(audioFormat) ? audioFormat : 'mp3');
+        if (ALLOWED_AUDIO_QUALITIES.includes(audioQuality)) {
+            args.push('--audio-quality', audioQuality);
+        }
     } else if (quality || container) {
         // Always prefer the separate video + audio streams: a constrained
         // pair first (when a container is requested), then the unconstrained

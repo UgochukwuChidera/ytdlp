@@ -284,6 +284,18 @@ describe('API Endpoints', () => {
         audioOnly: true,
       });
     });
+
+    it('forwards an explicit format selector from the format picker', async () => {
+      const res = await request(app)
+        .post('/api/download/queue')
+        .send({ url: 'https://example.com/video', formatSelector: '137+bestaudio' })
+        .expect(201);
+      expect(res.body).toHaveProperty('jobId');
+      expect(downloadQueue.addJob).toHaveBeenCalledWith('https://example.com/video', {
+        url: 'https://example.com/video',
+        formatSelector: '137+bestaudio',
+      });
+    });
   });
 
   describe('GET /api/download/queue', () => {

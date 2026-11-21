@@ -48,6 +48,16 @@
       </nav>
 
       <div class="sidebar-footer">
+        <button class="tab-btn" type="button" aria-label="What's new" data-tooltip="What's new" @click="changelogOpen = true">
+          <span class="tab-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
+              <path d="M3 3v5h5"/>
+              <path d="M12 8v4l3 2"/>
+            </svg>
+          </span>
+          <span class="tab-label">What's new</span>
+        </button>
         <button class="tab-btn" type="button" aria-label="Toggle dark mode" :data-tooltip="isDark ? 'Dark' : 'Light'" @click="toggleDarkMode">
           <span class="tab-icon">
             <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -80,12 +90,13 @@
       <router-view />
 
       <footer>
-        <span>YT-DLP Web Interface</span>
+        <span>YT-DLP Web Interface · v{{ appVersion }}</span>
       </footer>
     </div>
 
     <Toast />
     <ConfirmDialog />
+    <ChangelogDialog :open="changelogOpen" @close="changelogOpen = false" />
   </div>
 </template>
 
@@ -94,10 +105,13 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Toast from './components/Toast.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import ChangelogDialog from './components/ChangelogDialog.vue'
+import { appVersion } from './data/changelog'
 
 const route = useRoute()
 
 const mobileSidebarOpen = ref(false)
+const changelogOpen = ref(false)
 const isDark = ref(true)
 
 // Desktop sidebar collapse (icon rail), remembered across sessions.
@@ -348,6 +362,9 @@ html.dark .sidebar {
   padding: 10px 8px;
   border-top: 1px solid var(--line);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* ===== NAV BADGES ===== */

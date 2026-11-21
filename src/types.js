@@ -15,6 +15,8 @@
  * @property {string} [quality] - Quality preset (best, 1080p, etc)
  * @property {boolean} [audioOnly] - Extract audio only
  * @property {string} [audioFormat] - Audio format (mp3, m4a, etc)
+ * @property {string} [audioQuality] - Audio quality (0, 128K, 192K, 256K, 320K)
+ * @property {string} [formatSelector] - Explicit yt-dlp format selector from List Formats
  * @property {string} [outputTemplate] - Custom output template
  * @property {Object} [extraArgs] - Additional yt-dlp flags
  *

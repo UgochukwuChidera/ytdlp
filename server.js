@@ -417,7 +417,7 @@ app.post('/api/download', (req, res) => {
         return res.status(400).json({ error: 'A valid http(s) URL is required' });
     }
 
-    const { outputTemplate, extraArgs, format, quality, audioOnly, audioFormat } = req.body;
+    const { outputTemplate, extraArgs, format, quality, audioOnly, audioFormat, audioQuality, formatSelector } = req.body;
     if (outputTemplate && !sanitizeOutputTemplate(outputTemplate)) {
         return res.status(400).json({ error: 'Invalid output template' });
     }
@@ -444,6 +444,8 @@ app.post('/api/download', (req, res) => {
                 quality,
                 audioOnly,
                 audioFormat: resolvedAudioFormat,
+                audioQuality,
+                formatSelector,
                 outputTemplate,
             },
             { binDir, downloadsDir, extraArgs: extraArgsFiltered },
@@ -581,6 +583,8 @@ app.post('/api/download/queue/batch', (req, res) => {
                 quality: req.body.quality,
                 audioOnly: req.body.audioOnly,
                 audioFormat: req.body.audioFormat,
+                audioQuality: req.body.audioQuality,
+                formatSelector: req.body.formatSelector,
                 outputTemplate: req.body.outputTemplate,
                 options: req.body.options,
                 title: (typeof titles[i] === 'string' && titles[i]) || title || url,

@@ -182,5 +182,30 @@ describe('buildQualityArgs', () => {
     expect(args).not.toContain('-f');
     expect(args).toContain('--extract-audio');
     expect(args[args.indexOf('--audio-format') + 1]).toBe('m4a');
+    expect(args).not.toContain('--audio-quality');
+  });
+
+  it('applies an allowed audio quality and drops an invalid one', () => {
+    const args = buildQualityArgs({ audioOnly: true, audioFormat: 'mp3', audioQuality: '320K' }, ctx);
+    expect(args[args.indexOf('--audio-quality') + 1]).toBe('320K');
+
+    const invalid = buildQualityArgs({ audioOnly: true, audioFormat: 'mp3', audioQuality: '--exec' }, ctx);
+    expect(invalid).not.toContain('--audio-quality');
+  });
+
+  it('ignores audio quality for video downloads', () => {
+    const args = buildQualityArgs({ quality: '1080p', audioQuality: '320K' }, ctx);
+    expect(args).not.toContain('--audio-quality');
+  });
+
+  it('uses an explicit format selector instead of the presets', () => {
+    const args = buildQualityArgs(
+      { format: 'mp4', quality: '1080p', audioOnly: true, formatSelector: '137+140' },
+      ctx,
+    );
+    const selectors = args.filter((arg, i) => args[i - 1] === '-f');
+    expect(selectors).toEqual(['137+140']);
+    expect(args).not.toContain('--extract-audio');
+    expect(args).not.toContain('--merge-output-format');
   });
 });
